@@ -7,9 +7,14 @@ import { SkinId } from "../../../model/SkinId";
 import { OsuFolderService } from "./OsuFolderService";
 import { GetTextureFileOption, OsuSkinTextureResolver, SkinFolderReader } from "@rewind/osu-local/skin-reader";
 import { join } from "path";
+import { pathToFileURL } from "url";
 import { STAGE_TYPES } from "../../types";
 
 export type SkinTextureLocation = { key: OsuSkinTextures; paths: string[] };
+
+export function skinTextureFileUrl(folderPath: string, relativePath: string) {
+  return pathToFileURL(join(folderPath, relativePath)).toString();
+}
 
 async function startLoading(loader: Loader, skinName: string): Promise<boolean> {
   return new Promise<boolean>((resolve, reject) => {
@@ -22,8 +27,8 @@ async function startLoading(loader: Loader, skinName: string): Promise<boolean> 
       resolve(true);
     });
 
-    loader.onError.once((resource) => {
-      console.error(`Could not load resource ${resource.name}`);
+    loader.onError.add((error, _loader, resource) => {
+      console.error(`Could not load skin resource ${resource.name} from '${resource.url}'`, error);
     });
     loader.load();
   });
@@ -81,7 +86,7 @@ export class SkinLoader {
       if (filePaths.length === 0) {
         continue;
       }
-      return filePaths.map((path) => `${prefix}/${path}`);
+      return filePaths.map((path) => skinTextureFileUrl(prefix, path));
     }
     console.debug(`No skin has the skin texture ${osuSkinTexture}`);
     return [];
@@ -103,17 +108,18 @@ export class SkinLoader {
     const { config } = skinResolver;
 
     const skinTextureKeys = Object.keys(DEFAULT_SKIN_TEXTURE_CONFIG);
+    //a fix was here, idk why this bug did not being found by others
     const files = await Promise.all(
       skinTextureKeys.map(async (key) => ({
         key,
         paths: await this.resolve(key as OsuSkinTextures, { animatedIfExists: true, hdIfExists: true }, [
           // In the future beatmap stuff can be listed here as well
           {
-            prefix: join("file://", this.resolveToPath(skinId)),
+            prefix: this.resolveToPath(skinId),
             resolver: skinResolver,
           },
           {
-            prefix: join("file://", this.resolveToPath(OSU_DEFAULT_SKIN_ID)),
+            prefix: this.resolveToPath(OSU_DEFAULT_SKIN_ID),
             resolver: osuDefaultSkinResolver,
           },
         ]),
@@ -144,9 +150,18 @@ export class SkinLoader {
     }
 
     queueFiles.forEach((file) => {
+      const texture = loader.resources[file.name]?.texture;
+      if (!texture) {
+        console.error(`Skin texture ${file.key} was not available after loading resource ${file.name}`);
+        return;
+      }
       if (!(file.key in textures)) textures[file.key] = [];
-      textures[file.key]?.push(loader.resources[file.name].texture as Texture);
+      textures[file.key]?.push(texture as Texture);
     });
+
+    if (Object.keys(textures).length === 0) {
+      throw new Error(`Skin ${skinName} did not provide any loadable textures`);
+    }
 
     return (this.skins[id] = new Skin(config, textures));
   }
