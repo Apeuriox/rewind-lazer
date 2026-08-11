@@ -19,6 +19,8 @@ export interface GameplayInfo {
   score: number;
   currentCombo: number;
   maxComboSoFar: number;
+  sliderTickHits: number;
+  sliderEndHits: number;
 }
 
 /** COMBO **/
@@ -102,6 +104,8 @@ export const defaultGameplayInfo: GameplayInfo = Object.freeze({
   currentCombo: 0,
   maxComboSoFar: 0,
   verdictCounts: [0, 0, 0, 0],
+  sliderTickHits: 0,
+  sliderEndHits: 0,
   accuracy: 0,
   score: 0,
 });
@@ -116,11 +120,15 @@ export class GameplayInfoEvaluator {
   judgedObjectsIndex: number;
   comboInfo: ReplayComboInformation;
   verdictCount: StableVerdictCount;
+  sliderTickHits: number;
+  sliderEndHits: number;
 
   constructor(private beatmap: Beatmap, options?: Partial<EvaluationOption>) {
     this.options = { ...defaultEvaluationOptions, ...options };
     this.comboInfo = { maxComboSoFar: 0, currentCombo: 0 };
     this.verdictCount = { MISS: 0, MEH: 0, GREAT: 0, OK: 0 };
+    this.sliderTickHits = 0;
+    this.sliderEndHits = 0;
     this.judgedObjectsIndex = 0;
     // TODO: Do some initialization for calculating ScoreV2 (like max score)
   }
@@ -135,6 +143,13 @@ export class GameplayInfoEvaluator {
 
   evaluateSliderCheckpoint(hitObjectType: SliderCheckPointType, hit: boolean) {
     this.comboInfo = updateComboInfo(this.comboInfo, hitObjectType, hit);
+    if (!hit) return;
+
+    if (hitObjectType === "LAST_LEGACY_TICK") {
+      this.sliderEndHits += 1;
+    } else {
+      this.sliderTickHits += 1;
+    }
   }
 
   countAsArray() {
@@ -146,6 +161,8 @@ export class GameplayInfoEvaluator {
     if (this.judgedObjectsIndex >= replayState.judgedObjects.length + 1) {
       this.comboInfo = { maxComboSoFar: 0, currentCombo: 0 };
       this.verdictCount = { MISS: 0, MEH: 0, GREAT: 0, OK: 0 };
+      this.sliderTickHits = 0;
+      this.sliderEndHits = 0;
       this.judgedObjectsIndex = 0;
     }
 
@@ -176,6 +193,8 @@ export class GameplayInfoEvaluator {
       accuracy: osuStableAccuracy(counts) ?? 1.0,
       currentCombo: this.comboInfo.currentCombo,
       maxComboSoFar: this.comboInfo.maxComboSoFar,
+      sliderTickHits: this.sliderTickHits,
+      sliderEndHits: this.sliderEndHits,
     };
   }
 }

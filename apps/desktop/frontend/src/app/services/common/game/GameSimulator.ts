@@ -8,6 +8,7 @@ import {
   HitObjectJudgement,
   isHitObjectJudgement,
   gameStateEvaluatorOptionsForClient,
+  ReplayClient,
   ReplayAnalysisEvent,
   retrieveEvents,
 } from "@osujs/core";
@@ -27,12 +28,15 @@ export class GameSimulator {
   private currentInfo: GameplayInfo = defaultGameplayInfo;
   public replayEvents$: BehaviorSubject<ReplayAnalysisEvent[]>;
   public difficulties$: BehaviorSubject<number[]>;
+  public replayClient$: BehaviorSubject<ReplayClient | null>;
   public judgements: HitObjectJudgement[] = [];
   public hits: [number, number, boolean][] = [];
+  private replayLoadedAtMs?: number;
 
   constructor() {
     this.replayEvents$ = new BehaviorSubject<ReplayAnalysisEvent[]>([]);
     this.difficulties$ = new BehaviorSubject<number[]>([]);
+    this.replayClient$ = new BehaviorSubject<ReplayClient | null>(null);
   }
 
   calculateDifficulties(rawBeatmap: string, durationInMs: number, mods: number) {
@@ -83,6 +87,7 @@ export class GameSimulator {
   calculateHitErrorArray() {}
 
   simulateReplay(beatmap: Beatmap, replay: OsuReplay) {
+    this.replayClient$.next(replay.client);
     this.gameplayTimeMachine = new BucketedGameStateTimeMachine(
       replay.frames,
       beatmap,
@@ -112,6 +117,7 @@ export class GameSimulator {
     }
     // not sure if this is needed
     this.hits.sort((a, b) => a[0] - b[0]);
+    this.replayLoadedAtMs = performance.now();
   }
 
   // Simulates the game to be at the given time
@@ -131,6 +137,14 @@ export class GameSimulator {
     return this.currentInfo;
   }
 
+  getReplayClient() {
+    return this.replayClient$.getValue();
+  }
+
+  getReplayAgeMs() {
+    return this.replayLoadedAtMs === undefined ? Number.POSITIVE_INFINITY : performance.now() - this.replayLoadedAtMs;
+  }
+
   // Very likely to be a request from the UI since it wants to render the playbar events
   async calculateEvents() {
     // In case it takes unbearably long -> we might need a web worker
@@ -139,5 +153,7 @@ export class GameSimulator {
   clear() {
     this.replayEvents$.next([]);
     this.difficulties$.next([]);
+    this.replayClient$.next(null);
+    this.replayLoadedAtMs = undefined;
   }
 }

@@ -34,7 +34,7 @@ import modHiddenImg from "../../../assets/mod_hidden.png";
 import { ALLOWED_SPEEDS, PlaybarColors } from "../../utils/constants";
 
 import { useSettingsModalContext } from "../../providers/SettingsProvider";
-import { ReplayAnalysisEvent } from "@osujs/core";
+import { ReplayAnalysisEvent, ReplayClient } from "@osujs/core";
 import { useObservable } from "rxjs-hooks";
 import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 import { HelpModalDialog } from "./HelpModal";
@@ -219,7 +219,7 @@ function CurrentTime() {
   );
 }
 
-function groupTimings(events: ReplayAnalysisEvent[]) {
+function groupTimings(events: ReplayAnalysisEvent[], replayClient: ReplayClient | null) {
   const missTimings: number[] = [];
   const mehTimings: number[] = [];
   const okTimings: number[] = [];
@@ -228,8 +228,7 @@ function groupTimings(events: ReplayAnalysisEvent[]) {
   events.forEach((e) => {
     switch (e.type) {
       case "HitObjectJudgement":
-        // TODO: for lazer style, this needs some rework
-        if (e.isSliderHead) {
+        if (e.isSliderHead && replayClient !== "LAZER") {
           if (e.verdict === "MISS") sliderBreakTimings.push(e.time);
           return;
         } else {
@@ -258,18 +257,19 @@ function GameTimeSlider() {
   const { gameSimulator } = useAnalysisApp();
   const { playbarSettingsStore } = useCommonManagers();
   const replayEvents = useObservable(() => gameSimulator.replayEvents$, []);
+  const replayClient = useObservable(() => gameSimulator.replayClient$, null);
   const difficulties = useObservable(() => gameSimulator.difficulties$, []);
   const playbarSettings = useObservable(() => playbarSettingsStore.settings$, DEFAULT_PLAY_BAR_SETTINGS);
 
   const events = useMemo(() => {
-    const { sliderBreakTimings, missTimings, mehTimings, okTimings } = groupTimings(replayEvents);
+    const { sliderBreakTimings, missTimings, mehTimings, okTimings } = groupTimings(replayEvents, replayClient);
     return [
       { color: PlaybarColors.MISS, timings: missTimings, tooltip: "Misses" },
       { color: PlaybarColors.SLIDER_BREAK, timings: sliderBreakTimings, tooltip: "Sliderbreaks" },
       { color: PlaybarColors.MEH, timings: mehTimings, tooltip: "50s" },
       { color: PlaybarColors.OK, timings: okTimings, tooltip: "100s" },
     ];
-  }, [replayEvents]);
+  }, [replayClient, replayEvents]);
 
   return (
     <BaseGameTimeSlider

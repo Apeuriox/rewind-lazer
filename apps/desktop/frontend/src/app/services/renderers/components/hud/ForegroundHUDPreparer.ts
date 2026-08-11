@@ -15,6 +15,9 @@ import { mean, standardDeviation } from "simple-statistics";
 import { HitErrorBarSettingsStore } from "../../../common/hit-error-bar";
 import { SkinHolder } from "../../../common/skin";
 
+const LAZER_REPLAY_LABEL_VISIBLE_MS = 5_000;
+const LAZER_REPLAY_LABEL_FADE_MS = 500;
+
 function calculateUnstableRate(x: number[]) {
   return x.length === 0 ? 0 : standardDeviation(x) * 10;
 }
@@ -27,6 +30,7 @@ function calculateMean(x: number[]) {
 export class ForegroundHUDPreparer {
   container: Container;
   stats: Text;
+  replayTypeLabel: Text;
   hitErrorBar: OsuClassicHitErrorBar;
 
   hitMinIndex = 0;
@@ -45,6 +49,16 @@ export class ForegroundHUDPreparer {
   ) {
     this.container = new Container();
     this.stats = new Text("", { fontSize: 16, fill: 0xeeeeee, fontFamily: "Arial", align: "left" });
+    this.replayTypeLabel = new Text("Lazer Replay", {
+      fontSize: 16,
+      fontWeight: "600",
+      fill: 0xeeeeee,
+      fontFamily: "Arial",
+      align: "right",
+      stroke: 0x000000,
+      strokeThickness: 2,
+    });
+    this.replayTypeLabel.anchor.set(1, 0);
     this.hitErrorBar = new OsuClassicHitErrorBar();
   }
 
@@ -140,7 +154,21 @@ export class ForegroundHUDPreparer {
       accNumber.prepare({ accuracy: gameplayInfo.accuracy, digitTextures, dotTexture, percentageTexture, overlap });
       accNumber.container.position.set(STAGE_WIDTH - 15, 25);
       this.container.addChild(accNumber.container);
+      this.updateReplayTypeLabel(accNumber.container.height);
     }
+  }
+
+  private updateReplayTypeLabel(accuracyHeight: number) {
+    if (this.gameSimulator.getReplayClient() !== "LAZER") return;
+
+    const age = this.gameSimulator.getReplayAgeMs();
+    const fadeProgress = Math.max(0, age - LAZER_REPLAY_LABEL_VISIBLE_MS) / LAZER_REPLAY_LABEL_FADE_MS;
+    const alpha = Math.max(0, 1 - fadeProgress);
+    if (alpha <= 0) return;
+
+    this.replayTypeLabel.alpha = alpha;
+    this.replayTypeLabel.position.set(STAGE_WIDTH - 15, 25 + accuracyHeight + 6);
+    this.container.addChild(this.replayTypeLabel);
   }
 
   private updateStats() {
@@ -159,11 +187,18 @@ export class ForegroundHUDPreparer {
       const localMean = calculateMean(this.recentHits);
       const localDeviation = calculateUnstableRate(this.recentHits);
 
+      const sliderStatistics =
+        this.gameSimulator.getReplayClient() === "LAZER"
+          ? `
+Tick: ${gameplayInfo.sliderTickHits}
+End: ${gameplayInfo.sliderEndHits}`
+          : "";
+
       this.stats.text = `Time: ${formatGameTime(time, true)}
 300: ${count[0]}
 100: ${count[1]}
 50: ${count[2]}
-Misses: ${count[3]}
+Misses: ${count[3]}${sliderStatistics}
 
 MaxCombo: ${maxCombo}
 

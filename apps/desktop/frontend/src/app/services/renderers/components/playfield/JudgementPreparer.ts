@@ -57,7 +57,7 @@ export class JudgementPreparer {
 
       // TODO: Should be configurable, technically speaking sliderHeadJudgementSkip=false does not reflect osu!stable
       // (it resembles lazer) However, in this replay analysis tool this is more useful (?)
-      const sliderHeadJudgementSkip = true;
+      const sliderHeadJudgementSkip = this.gameSimulator.getReplayClient() !== "LAZER";
       if (sliderHeadJudgementSkip && j.isSliderHead) continue;
       judgement.prepare({ time: timeAgo, position: j.position, scale, animationFrameRate, textures });
       // judgement.sprite.zIndex = -timeAgo;
