@@ -1,7 +1,6 @@
 // Strain
 import {
   Beatmap,
-  determineDefaultPlaybackSpeed,
   HitCircle,
   isHitCircle,
   isSlider,
@@ -295,10 +294,9 @@ const speedAdjustedOD = (OD: number, clockRate: number) =>
 
 // Calculates the different star ratings after every hit object i
 export function calculateDifficultyAttributes(
-  { appliedMods: mods, difficulty, hitObjects, controlPointInfo }: Beatmap,
+  { appliedMods: mods, difficulty, hitObjects, controlPointInfo, gameClockRate: clockRate }: Beatmap,
   onlyFinalValue: boolean,
 ) {
-  const clockRate = determineDefaultPlaybackSpeed(mods);
   const diffs = preprocessDifficultyHitObject(hitObjects, {
     clockRate,
     overallDifficulty: difficulty.overallDifficulty,
