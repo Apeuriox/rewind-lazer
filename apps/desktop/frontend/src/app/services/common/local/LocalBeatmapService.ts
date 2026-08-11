@@ -15,6 +15,7 @@ export interface LocalBeatmap {
   rawBlueprint: string;
   source: LocalBeatmapSource;
   getAssetUrl(filename: string): Promise<string | undefined>;
+  getAssetData(filename: string): Promise<ArrayBuffer | undefined>;
   dispose(): void;
 }
 
@@ -29,6 +30,10 @@ interface LazerRealmBeatmapResult {
   files?: LazerRealmFile[];
 }
 
+function toArrayBuffer(data: Buffer) {
+  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+}
+
 class StableLocalBeatmap implements LocalBeatmap {
   readonly source = "STABLE" as const;
 
@@ -36,6 +41,10 @@ class StableLocalBeatmap implements LocalBeatmap {
 
   async getAssetUrl(filename: string) {
     return filename ? pathToFileURL(join(this.folderPath, filename)).toString() : undefined;
+  }
+
+  async getAssetData(filename: string) {
+    return filename ? toArrayBuffer(await readFile(join(this.folderPath, filename))) : undefined;
   }
 
   dispose() {}
@@ -62,10 +71,19 @@ class LazerLocalBeatmap implements LocalBeatmap {
     if (cached) return cached;
 
     const data = await readFile(lazerStoragePath(this.root, file.hash));
-    const bytes = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+    const bytes = toArrayBuffer(data);
     const url = URL.createObjectURL(new Blob([bytes], { type: mimeTypeFor(file.filename) }));
     this.objectUrls.set(file.hash, url);
     return url;
+  }
+
+  async getAssetData(filename: string) {
+    if (!filename) return undefined;
+
+    const file = this.filesByName.get(filename.toLowerCase());
+    if (!file) return undefined;
+
+    return toArrayBuffer(await readFile(lazerStoragePath(this.root, file.hash)));
   }
 
   dispose() {

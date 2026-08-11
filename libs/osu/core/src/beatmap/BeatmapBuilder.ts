@@ -183,6 +183,7 @@ function findDifficultyApplier(mods: OsuClassicMod[]): BeatmapDifficultyAdjuster
 interface BeatmapBuilderOptions {
   addStacking: boolean;
   mods: OsuClassicMod[];
+  clockRate?: number;
 }
 
 const defaultBeatmapBuilderOptions: BeatmapBuilderOptions = {
@@ -202,7 +203,7 @@ const defaultBeatmapBuilderOptions: BeatmapBuilderOptions = {
  */
 export function buildBeatmap(bluePrint: Blueprint, options?: Partial<BeatmapBuilderOptions>): Beatmap {
   const { beatmapVersion, stackLeniency } = bluePrint.blueprintInfo;
-  const { mods, addStacking } = { ...defaultBeatmapBuilderOptions, ...options };
+  const { mods, addStacking, clockRate } = { ...defaultBeatmapBuilderOptions, ...options };
 
   const finalDifficulty = findDifficultyApplier(mods)(bluePrint.defaultDifficulty);
 
@@ -220,5 +221,5 @@ export function buildBeatmap(bluePrint: Blueprint, options?: Partial<BeatmapBuil
     modifyStackingPosition(hitObjects, stackLeniency, beatmapVersion);
   }
 
-  return new Beatmap(hitObjects, finalDifficulty, mods, bluePrint.controlPointInfo);
+  return new Beatmap(hitObjects, finalDifficulty, mods, bluePrint.controlPointInfo, clockRate);
 }

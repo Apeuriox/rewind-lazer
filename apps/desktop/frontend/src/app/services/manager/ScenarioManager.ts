@@ -2,7 +2,7 @@ import { injectable } from "inversify";
 import { BehaviorSubject } from "rxjs";
 import { Beatmap, buildBeatmap, modsToBitmask, parseBlueprint } from "@osujs/core";
 import { GameSimulator } from "../common/game/GameSimulator";
-import { AudioService } from "../common/audio/AudioService";
+import { AudioService, highPrecisionAudioUnavailableReason } from "../common/audio/AudioService";
 import { ReplayService } from "../common/local/ReplayService";
 import { BeatmapManager } from "./BeatmapManager";
 import { ReplayManager } from "./ReplayManager";
@@ -22,9 +22,24 @@ interface Scenario {
   status: "LOADING" | "ERROR" | "DONE" | "INIT";
 }
 
+export type HighPrecisionAudioState =
+  | { status: "UNAVAILABLE"; reason: "NO_REPLAY" | "LOADING" | "NOT_MP3" | "TOO_LONG" }
+  | { status: "AVAILABLE" }
+  | { status: "CONVERTING" }
+  | { status: "ACTIVE" }
+  | { status: "ERROR" };
+
+interface CurrentAudioSource {
+  filename: string;
+  originalUrl: string;
+  loadData: () => Promise<ArrayBuffer | undefined>;
+}
+
 @injectable()
 export class ScenarioManager {
   public scenario$: BehaviorSubject<Scenario>;
+  public highPrecisionAudioState$: BehaviorSubject<HighPrecisionAudioState>;
+  private currentAudioSource?: CurrentAudioSource;
 
   constructor(
     private readonly gameClock: GameplayClock,
@@ -44,6 +59,10 @@ export class ScenarioManager {
     private readonly audioEngine: AudioEngine,
   ) {
     this.scenario$ = new BehaviorSubject<Scenario>({ status: "INIT" });
+    this.highPrecisionAudioState$ = new BehaviorSubject<HighPrecisionAudioState>({
+      status: "UNAVAILABLE",
+      reason: "NO_REPLAY",
+    });
   }
 
   public initialize() {
@@ -57,6 +76,9 @@ export class ScenarioManager {
     this.gameClock.clear();
     this.replayManager.setMainReplay(null);
     this.audioEngine.destroy();
+    this.audioService.releaseTemporaryAudio();
+    this.currentAudioSource = undefined;
+    this.highPrecisionAudioState$.next({ status: "UNAVAILABLE", reason: "NO_REPLAY" });
     this.renderer.getRenderer()?.clear();
     this.beatmapManager.setBeatmap(Beatmap.EMPTY_BEATMAP);
     this.gameSimulator.clear();
@@ -70,6 +92,9 @@ export class ScenarioManager {
     console.log(`ScenarioManager loading replay with id = ${replayId}`);
     // TODO: Clean this up
     this.audioEngine.destroy();
+    this.audioService.releaseTemporaryAudio();
+    this.currentAudioSource = undefined;
+    this.highPrecisionAudioState$.next({ status: "UNAVAILABLE", reason: "LOADING" });
 
     this.scenario$.next({ status: "LOADING" });
 
@@ -91,16 +116,31 @@ export class ScenarioManager {
     // Load audio
     const audioUrl = await localBeatmap.getAssetUrl(metadata.audioFile);
     if (!audioUrl) throw Error(`Could not find beatmap audio file '${metadata.audioFile}' in ${localBeatmap.source}`);
-    this.audioEngine.setSong(await this.audioService.loadAudio(audioUrl));
-    this.audioEngine.song?.mediaElement.addEventListener("loadedmetadata", () => {
-      const duration = (this.audioEngine.song?.mediaElement.duration ?? 0) * 1000;
-      this.gameClock.setDuration(duration);
-      this.gameSimulator.calculateDifficulties(rawBlueprint, duration, modsToBitmask(replay.mods));
-    });
+    const audio = await this.audioService.loadAudio(audioUrl, metadata.audioFile);
+    this.audioEngine.setSong(audio);
+    const duration = audio.duration * 1000;
+    this.gameClock.setDuration(duration);
+    this.gameSimulator.calculateDifficulties(rawBlueprint, duration, modsToBitmask(replay.mods));
+
+    const unavailableReason = highPrecisionAudioUnavailableReason(metadata.audioFile, duration);
+    if (unavailableReason) {
+      this.highPrecisionAudioState$.next({ status: "UNAVAILABLE", reason: unavailableReason });
+    } else {
+      this.currentAudioSource = {
+        filename: metadata.audioFile,
+        originalUrl: audioUrl,
+        loadData: () => localBeatmap.getAssetData(metadata.audioFile),
+      };
+      this.highPrecisionAudioState$.next({ status: "AVAILABLE" });
+    }
 
     // If the building is too slow or unbearable, we should push the building to a WebWorker, but right now it's ok
     // even on long maps.
-    const beatmap = buildBeatmap(blueprint, { addStacking: true, mods: replay.mods });
+    const beatmap = buildBeatmap(blueprint, {
+      addStacking: true,
+      mods: replay.mods,
+      clockRate: replay.clockRate,
+    });
 
     console.log(`Beatmap built with ${beatmap.hitObjects.length} hitobjects`);
     console.log(`Replay loaded with ${replay.frames.length} frames`);
@@ -112,6 +152,7 @@ export class ScenarioManager {
     this.modSettingsService.setFlashlight(false);
 
     this.gameClock.pause();
+    this.gameClock.setReplaySpeed(replay.clockRate);
     this.gameClock.setSpeed(initialSpeed);
     this.gameClock.seekTo(0);
     this.beatmapManager.setBeatmap(beatmap);
@@ -124,9 +165,54 @@ export class ScenarioManager {
     this.scenario$.next({ status: "DONE" });
   }
 
+  async toggleHighPrecisionAudio() {
+    const state = this.highPrecisionAudioState$.getValue();
+    const source = this.currentAudioSource;
+    if (!source || state.status === "CONVERTING" || state.status === "UNAVAILABLE") return;
+
+    const enableHighPrecision = state.status !== "ACTIVE";
+    this.highPrecisionAudioState$.next({ status: "CONVERTING" });
+
+    const wasPlaying = this.gameClock.isPlaying;
+    this.gameClock.pause();
+    const currentTime = this.gameClock.timeElapsedInMs;
+    this.audioEngine.destroy();
+
+    try {
+      let audio: HTMLAudioElement;
+      if (enableHighPrecision) {
+        const audioData = await source.loadData();
+        if (!audioData) throw new Error(`Could not read audio data for '${source.filename}'`);
+        audio = await this.audioService.loadAudio(audioData, source.filename, true);
+      } else {
+        audio = await this.audioService.loadAudio(source.originalUrl, source.filename);
+      }
+      this.installReplacementAudio(audio, currentTime, wasPlaying);
+      this.highPrecisionAudioState$.next({ status: enableHighPrecision ? "ACTIVE" : "AVAILABLE" });
+    } catch (error) {
+      console.error("Could not switch high-precision audio", error);
+      try {
+        const fallback = await this.audioService.loadAudio(source.originalUrl, source.filename);
+        this.installReplacementAudio(fallback, currentTime, wasPlaying);
+      } catch (fallbackError) {
+        console.error("Could not restore the original audio", fallbackError);
+      }
+      this.highPrecisionAudioState$.next({ status: "ERROR" });
+    }
+  }
+
+  private installReplacementAudio(audio: HTMLAudioElement, timeInMs: number, resume: boolean) {
+    this.audioEngine.setSong(audio);
+    this.gameClock.setDuration(audio.duration * 1000);
+    this.audioEngine.changePlaybackRate(this.gameClock.speed);
+    this.gameClock.seekTo(timeInMs);
+    if (resume) this.gameClock.start();
+  }
+
   // This is just the NM view of a beatmap
   async loadBeatmap(blueprintId: string) {
     // Set speed to 1.0
+    this.gameClock.setReplaySpeed(undefined);
     this.gameClock.setSpeed(1.0);
     this.gameClock.seekTo(0);
     this.modSettingsService.setHidden(false);

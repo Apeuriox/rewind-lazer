@@ -17,6 +17,7 @@ export class ReplayService {
       client: replayClientFromVersion(res.gameVersion),
       frames: parseReplayFramesFromRaw(res.replay_data),
       mods: modsFromBitmask(res.mods),
+      clockRate: res.clockRate,
       md5hash: res.replayMD5,
       beatmapMd5: res.beatmapMD5,
       player: res.playerName,

@@ -8,6 +8,7 @@ export class GameplayClock {
   public isPlaying$: BehaviorSubject<boolean>;
   public durationInMs$: BehaviorSubject<number>;
   public speed$: BehaviorSubject<number>;
+  public replaySpeed$: BehaviorSubject<number | undefined>;
 
   public seeked$: Subject<number>;
 
@@ -21,6 +22,7 @@ export class GameplayClock {
     this.isPlaying$ = new BehaviorSubject<boolean>(false);
     this.durationInMs$ = new BehaviorSubject<number>(0);
     this.speed$ = new BehaviorSubject<number>(1);
+    this.replaySpeed$ = new BehaviorSubject<number | undefined>(undefined);
     this.seeked$ = new Subject<number>();
   }
 
@@ -98,6 +100,10 @@ export class GameplayClock {
     this.speed = speed;
   }
 
+  setReplaySpeed(speed?: number) {
+    this.replaySpeed$.next(speed);
+  }
+
   setDuration(durationInMs: number) {
     console.debug(`GameClock duration has been set to ${durationInMs}ms`);
     this.durationInMs = durationInMs;
@@ -113,6 +119,7 @@ export class GameplayClock {
   clear() {
     this.pause();
     this.speed$.next(1.0);
+    this.replaySpeed$.next(undefined);
     // This is just ahot fix
     this.durationInMs$.next(1);
     this.timeElapsedInMs = 0;

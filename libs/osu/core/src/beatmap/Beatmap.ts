@@ -23,9 +23,10 @@ export class Beatmap {
     public readonly difficulty: BeatmapDifficulty,
     public readonly appliedMods: OsuClassicMod[],
     public readonly controlPointInfo: ControlPointInfo,
+    gameClockRate?: number,
   ) {
     this.hitObjectDict = normalizeHitObjects(hitObjects);
-    this.gameClockRate = determineDefaultPlaybackSpeed(appliedMods);
+    this.gameClockRate = gameClockRate ?? determineDefaultPlaybackSpeed(appliedMods);
   }
 
   getHitObject(id: string): AllHitObjects {

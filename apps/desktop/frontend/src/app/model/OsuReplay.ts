@@ -7,6 +7,8 @@ export type OsuReplay = {
   gameVersion: number;
   client: ReplayClient;
   mods: OsuClassicMod[];
+  /** The full clock rate stored in a lazer replay's mod settings. */
+  clockRate?: number;
   player: string; // Could be useful to draw
   frames: ReplayFrame[];
 };

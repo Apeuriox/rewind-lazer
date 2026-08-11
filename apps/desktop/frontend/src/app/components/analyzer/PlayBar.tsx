@@ -1,6 +1,7 @@
 import {
   Box,
   Button,
+  CircularProgress,
   Divider,
   IconButton,
   ListItemIcon,
@@ -31,7 +32,7 @@ import { formatGameTime } from "@osujs/math";
 import { useAudioSettings, useAudioSettingsService } from "../../hooks/audio";
 import { useModControls } from "../../hooks/mods";
 import modHiddenImg from "../../../assets/mod_hidden.png";
-import { ALLOWED_SPEEDS, PlaybarColors } from "../../utils/constants";
+import { playbackSpeedOptions, PlaybarColors } from "../../utils/constants";
 
 import { useSettingsModalContext } from "../../providers/SettingsProvider";
 import { ReplayAnalysisEvent, ReplayClient } from "@osujs/core";
@@ -42,6 +43,7 @@ import { BaseCurrentTime, GameCurrentTimeHandle } from "./BaseCurrentTime";
 import { ignoreFocus } from "../../utils/focus";
 import { useAnalysisApp, useCommonManagers } from "../../providers/TheaterProvider";
 import { DEFAULT_PLAY_BAR_SETTINGS } from "../../services/common/playbar";
+import type { HighPrecisionAudioState } from "../../services/manager/ScenarioManager";
 
 const centerUp = {
   anchorOrigin: {
@@ -181,6 +183,104 @@ function PlayButton() {
   );
 }
 
+const defaultHighPrecisionAudioState: HighPrecisionAudioState = {
+  status: "UNAVAILABLE",
+  reason: "NO_REPLAY",
+};
+
+function highPrecisionAudioTooltip(state: HighPrecisionAudioState) {
+  switch (state.status) {
+    case "AVAILABLE":
+      return "Decode the MP3 to a temporary WAV for more accurate seeking. Uses extra memory and may take a moment.";
+    case "ACTIVE":
+      return "High-precision audio is on. Select to restore the original MP3 and release memory.";
+    case "CONVERTING":
+      return "Creating temporary WAV audio…";
+    case "ERROR":
+      return "Unable to create high-precision audio. Select to try again.";
+    case "UNAVAILABLE":
+      switch (state.reason) {
+        case "LOADING":
+          return "Audio information is still loading.";
+        case "NOT_MP3":
+          return "High-precision mode is only needed for MP3 audio.";
+        case "TOO_LONG":
+          return "Unavailable for tracks over 10 minutes to avoid excessive memory usage.";
+        case "NO_REPLAY":
+          return "Load a replay to use high-precision audio.";
+      }
+  }
+}
+
+function HighPrecisionAudioButton() {
+  const { scenarioManager } = useAnalysisApp();
+  const state = useObservable(() => scenarioManager.highPrecisionAudioState$, defaultHighPrecisionAudioState);
+  const active = state.status === "ACTIVE";
+  const converting = state.status === "CONVERTING";
+  const actionable = state.status === "AVAILABLE" || state.status === "ACTIVE" || state.status === "ERROR";
+  const statusAnnouncement = converting
+    ? "Creating temporary WAV audio."
+    : active
+    ? "High-precision audio enabled."
+    : state.status === "ERROR"
+    ? "Unable to create high-precision audio."
+    : "";
+
+  const handleClick = useCallback(() => {
+    if (!actionable) return;
+    void scenarioManager.toggleHighPrecisionAudio();
+  }, [actionable, scenarioManager]);
+
+  return (
+    <Tooltip title={highPrecisionAudioTooltip(state)} placement="top" arrow>
+      <Box component="span" sx={{ display: "inline-flex", position: "relative" }}>
+        <Button
+          size="small"
+          variant={active ? "contained" : "outlined"}
+          aria-label={active ? "Disable high-precision audio" : "Enable high-precision audio"}
+          aria-pressed={active}
+          aria-disabled={!actionable}
+          onClick={handleClick}
+          startIcon={converting ? <CircularProgress size={12} color="inherit" /> : undefined}
+          sx={{
+            minWidth: 52,
+            height: 28,
+            px: 1,
+            fontSize: 12,
+            lineHeight: 1,
+            textTransform: "none",
+            opacity: actionable ? 1 : 0.45,
+            cursor: actionable ? "pointer" : "not-allowed",
+            transitionProperty: "background-color, color, border-color, opacity, transform",
+            transitionDuration: "120ms",
+            "&:active": actionable ? { transform: "scale(0.96)" } : undefined,
+          }}
+        >
+          WAV
+        </Button>
+        <Box
+          component="span"
+          role="status"
+          aria-live="polite"
+          sx={{
+            position: "absolute",
+            width: 1,
+            height: 1,
+            p: 0,
+            m: -1,
+            overflow: "hidden",
+            clip: "rect(0 0 0 0)",
+            whiteSpace: "nowrap",
+            border: 0,
+          }}
+        >
+          {statusAnnouncement}
+        </Box>
+      </Box>
+    </Tooltip>
+  );
+}
+
 // https://css-tricks.com/using-requestanimationframe-with-react-hooks/
 const timeAnimateFPS = 30;
 
@@ -316,13 +416,14 @@ function SettingsButton() {
 
 interface BaseSpeedButtonProps {
   value: number;
+  replaySpeed?: number;
   onChange: (value: number) => any;
 }
 
 const speedLabels: Record<number, string> = { 0.75: "HT", 1.5: "DT" } as const;
 
 function BaseSpeedButton(props: BaseSpeedButtonProps) {
-  const { value, onChange } = props;
+  const { value, replaySpeed, onChange } = props;
 
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
@@ -332,7 +433,8 @@ function BaseSpeedButton(props: BaseSpeedButtonProps) {
   const handleClose = () => {
     setAnchorEl(null);
   };
-  const formatSpeed = (s: number) => `${s}x`;
+  const formatSpeed = (s: number) => `${Number(s.toFixed(2))}x`;
+  const selectableSpeeds = playbackSpeedOptions(value, replaySpeed);
 
   // Floating point issues?
 
@@ -367,7 +469,7 @@ function BaseSpeedButton(props: BaseSpeedButtonProps) {
         }}
       >
         <MenuList>
-          {ALLOWED_SPEEDS.map((s) => (
+          {selectableSpeeds.map((s) => (
             <MenuItem
               key={s}
               onClick={() => {
@@ -378,7 +480,7 @@ function BaseSpeedButton(props: BaseSpeedButtonProps) {
             >
               <ListItemText>{formatSpeed(s)}</ListItemText>
               <Typography variant="body2" color="text.secondary">
-                {speedLabels[s] ?? ""}
+                {speedLabels[s] ?? (s === replaySpeed ? "Replay" : "")}
               </Typography>
             </MenuItem>
           ))}
@@ -389,10 +491,10 @@ function BaseSpeedButton(props: BaseSpeedButtonProps) {
 }
 
 function SpeedButton() {
-  const { speed, setSpeed } = useGameClockControls();
+  const { speed, replaySpeed, setSpeed } = useGameClockControls();
   return (
     // <Box sx={{ display: "flex", justifyContent: "center" }}>
-    <BaseSpeedButton value={speed} onChange={setSpeed} />
+    <BaseSpeedButton value={speed} replaySpeed={replaySpeed} onChange={setSpeed} />
     // </Box>
   );
 }
@@ -433,6 +535,7 @@ export function PlayBar() {
   return (
     <Stack height={64} gap={1} p={2} direction={"row"} alignItems={"center"}>
       <PlayButton />
+      <HighPrecisionAudioButton />
       <CurrentTime />
       <GameTimeSlider />
       <Duration />

@@ -116,6 +116,7 @@ export class AudioEngine {
 
   destroy() {
     if (this.song) {
+      this.song.mediaElement.pause();
       this.song.disconnect();
       this.song = undefined;
     }
