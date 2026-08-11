@@ -53,6 +53,7 @@ export const OsuSettingsSchema: JSONSchemaType<OsuSettings> = {
 @injectable()
 export class OsuFolderService extends PersistentService<OsuSettings> {
   public replaysFolder$ = new BehaviorSubject<string>("");
+  public watchedReplayFolders$ = new BehaviorSubject<string[]>([]);
   public songsFolder$ = new BehaviorSubject<string>("");
 
   key = "osu-settings";
@@ -70,7 +71,10 @@ export class OsuFolderService extends PersistentService<OsuSettings> {
   async onFolderChange(osuSettings: OsuSettings) {
     const { osuStablePath } = osuSettings;
     ipcRenderer.send("osuFolderChanged", osuStablePath, osuSettings.osuLazerPath, osuSettings.defaultReplayClient);
-    this.replaysFolder$.next(osuStablePath ? join(osuStablePath, "Replays") : "");
+    const stableReplayFolder = osuStablePath ? join(osuStablePath, "Replays") : "";
+    const lazerReplayFolder = osuSettings.osuLazerPath ? join(osuSettings.osuLazerPath, "exports") : "";
+    this.replaysFolder$.next(stableReplayFolder);
+    this.watchedReplayFolders$.next([stableReplayFolder, lazerReplayFolder].filter(Boolean));
     const userId = await username();
     this.songsFolder$.next(
       osuStablePath ? ((await determineSongsFolder(osuStablePath, userId as string)) as string) : "",
