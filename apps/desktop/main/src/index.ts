@@ -67,10 +67,13 @@ function createFrontendWindow() {
     return { action: "deny" };
   });
 
-  ipcMain.on("osuFolderChanged", (event, folder: string) => {
-    // TODO: frontend.setMenu()
-    Menu.setApplicationMenu(createMenu(folder));
-  });
+  ipcMain.on(
+    "osuFolderChanged",
+    (event, stableFolder: string, lazerFolder: string, defaultReplayClient: "STABLE" | "LAZER") => {
+      // TODO: frontend.setMenu()
+      Menu.setApplicationMenu(createMenu(stableFolder, lazerFolder, defaultReplayClient));
+    },
+  );
 
   // In DEV mode we want to utilize hot reloading, therefore we are going to connect to the development server.
   // Therefore, `nx run frontend:serve` must be run first before this is executed.
@@ -99,7 +102,7 @@ function handleAllWindowClosed() {
 function handleReady() {
   const isDev = isDevelopmentMode();
 
-  Menu.setApplicationMenu(createMenu(null));
+  Menu.setApplicationMenu(createMenu(null, null, "STABLE"));
 
   console.log(
     "Booting Electron application with settings: ",
@@ -149,8 +152,13 @@ function handleActivate() {
   app.on("activate", handleActivate);
 })();
 
-function createMenu(osuFolder: string | null) {
-  const osuFolderKnown = !!osuFolder as boolean;
+function createMenu(stableFolder: string | null, lazerFolder: string | null, defaultReplayClient: "STABLE" | "LAZER") {
+  const osuFolderKnown = !!stableFolder || !!lazerFolder;
+  const configuredFolder = stableFolder || lazerFolder;
+  const stableReplayFolder = stableFolder ? join(stableFolder, "Replays") : "";
+  const lazerReplayFolder = lazerFolder ? join(lazerFolder, "exports") : "";
+  const defaultReplayFolder =
+    defaultReplayClient === "LAZER" ? lazerReplayFolder || stableReplayFolder : stableReplayFolder || lazerReplayFolder;
   const isMac = process.platform === "darwin";
 
   const template: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [];
@@ -205,7 +213,7 @@ function createMenu(osuFolder: string | null) {
           enabled: osuFolderKnown,
           click: async () => {
             const { canceled, filePaths } = await dialog.showOpenDialog({
-              defaultPath: join(osuFolder ?? "", "Replays"),
+              defaultPath: defaultReplayFolder,
               properties: ["openFile"],
               filters: [
                 { name: "osu! Replay", extensions: ["osr"] },
@@ -239,9 +247,9 @@ function createMenu(osuFolder: string | null) {
         },
         { type: "separator" },
         {
-          label: "Open osu! Folder",
+          label: "Open osu! Data Folder",
           click: async () => {
-            if (osuFolder) await shell.openPath(osuFolder);
+            if (configuredFolder) await shell.openPath(configuredFolder);
           },
           enabled: osuFolderKnown,
         },

@@ -7,6 +7,7 @@ import { OsuAction, ReplayFrame } from "../replays/Replay";
 import { MainHitObjectVerdict } from "./Verdicts";
 import { HitCircle } from "../hitobjects/HitCircle";
 import { RELAX_LENIENCY } from "../mods/Mods";
+import { ReplayClient } from "../replays/RawReplayData";
 
 /**
  * In the real osu game, the slider body will be evaluated at every game tick (?), which is something we can not do.
@@ -41,12 +42,19 @@ type Event = {
     | "HIT_CIRCLE_FORCE_KILL"
     | "SLIDER_START"
     | "SLIDER_END"
+    | "SLIDER_TAIL_LENIENCY_START"
     | "SPINNER_START"
     | "SPINNER_END"
     | "SLIDER_CHECK_POINT";
 };
 
-function generateEvents(beatmap: Beatmap, hitWindows: number[]): Event[] {
+function sliderTailLeniencyStartTime(slider: Slider, sliderTailLeniency: number) {
+  const checkpointsBeforeTail = slider.checkPoints.filter((c) => c.type !== "LAST_LEGACY_TICK");
+  const lastCheckpointTime = Math.max(slider.startTime, ...checkpointsBeforeTail.map((c) => c.hitTime));
+  return Math.max(slider.endTime + sliderTailLeniency, lastCheckpointTime);
+}
+
+function generateEvents(beatmap: Beatmap, hitWindows: number[], sliderTailLeniency: number): Event[] {
   const events: Event[] = [];
   const mehHitWindow = hitWindows[2];
 
@@ -64,8 +72,16 @@ function generateEvents(beatmap: Beatmap, hitWindows: number[]): Event[] {
       events.push({ time: h.startTime, hitObjectId: h.id, type: "SLIDER_START" });
       events.push({ time: h.endTime, hitObjectId: h.id, type: "SLIDER_END" });
       h.checkPoints.forEach((c) => {
-        events.push({ time: c.hitTime, hitObjectId: c.id, type: "SLIDER_CHECK_POINT" });
+        const checkpointTime = c.type === "LAST_LEGACY_TICK" ? Math.min(c.hitTime, h.endTime) : c.hitTime;
+        events.push({ time: checkpointTime, hitObjectId: c.id, type: "SLIDER_CHECK_POINT" });
       });
+      if (sliderTailLeniency < 0) {
+        events.push({
+          time: sliderTailLeniencyStartTime(h, sliderTailLeniency),
+          hitObjectId: h.id,
+          type: "SLIDER_TAIL_LENIENCY_START",
+        });
+      }
     } else if (isSpinner(h)) {
       events.push({ time: h.startTime, hitObjectId: h.id, type: "SPINNER_START" });
       events.push({ time: h.endTime, hitObjectId: h.id, type: "SPINNER_END" });
@@ -73,7 +89,16 @@ function generateEvents(beatmap: Beatmap, hitWindows: number[]): Event[] {
   }
 
   // TODO: What if 2B maps?
-  events.sort((a, b) => a.time - b.time);
+  events.sort((a, b) => {
+    const timeDifference = a.time - b.time;
+    if (timeDifference !== 0) return timeDifference;
+
+    // Lazer's tail checkpoint occurs at the exact same time as SLIDER_END.
+    // It must read the final tracking state before SLIDER_END clears it.
+    if (a.type === "SLIDER_CHECK_POINT" && b.type === "SLIDER_END") return -1;
+    if (a.type === "SLIDER_END" && b.type === "SLIDER_CHECK_POINT") return 1;
+    return 0;
+  });
 
   return events;
 }
@@ -84,12 +109,30 @@ export type HitWindowStyle = "OSU_STABLE" | "OSU_LAZER";
 export type GameStateEvaluatorOptions = {
   hitWindowStyle: HitWindowStyle;
   noteLockStyle: NoteLockStyle;
+  sliderTailLeniency?: number;
 };
 
-const defaultOptions: GameStateEvaluatorOptions = {
+type ResolvedGameStateEvaluatorOptions = GameStateEvaluatorOptions & { sliderTailLeniency: number };
+
+export const LAZER_SLIDER_TAIL_LENIENCY = -36;
+
+const defaultOptions: ResolvedGameStateEvaluatorOptions = {
   noteLockStyle: "STABLE",
   hitWindowStyle: "OSU_STABLE",
+  sliderTailLeniency: 0,
 };
+
+export function gameStateEvaluatorOptionsForClient(client: ReplayClient): GameStateEvaluatorOptions {
+  if (client === "LAZER") {
+    return {
+      hitWindowStyle: "OSU_LAZER",
+      noteLockStyle: "NONE",
+      sliderTailLeniency: LAZER_SLIDER_TAIL_LENIENCY,
+    };
+  }
+
+  return { ...defaultOptions };
+}
 
 const HitObjectVerdicts = {
   GREAT: 0,
@@ -106,16 +149,16 @@ export class GameStateEvaluator {
   private readonly events: Event[];
   private gameState: GameState = defaultGameState();
   private frame: ReplayFrame = { time: 0, position: { x: 0, y: 0 }, actions: [] };
-  private options: GameStateEvaluatorOptions;
+  private options: ResolvedGameStateEvaluatorOptions;
   private hitWindows: number[];
 
   constructor(private readonly beatmap: Beatmap, options?: GameStateEvaluatorOptions) {
-    this.options = Object.assign({ ...defaultOptions }, options);
+    this.options = { ...defaultOptions, ...options };
     this.hitWindows = hitWindowsForOD(
       beatmap.difficulty.overallDifficulty,
       this.options.hitWindowStyle === "OSU_LAZER",
     );
-    this.events = generateEvents(beatmap, this.hitWindows);
+    this.events = generateEvents(beatmap, this.hitWindows, this.options.sliderTailLeniency);
   }
 
   judgeHitCircle(id: string, verdict: HitCircleVerdict) {
@@ -188,11 +231,17 @@ export class GameStateEvaluator {
     this.updateSliderBodyTracking(time, cursorPosition, this.gameState.pressingSince);
     const sliderId = checkPoint.slider.id;
     const state = this.gameState.sliderBodyState.get(sliderId);
-    if (state === undefined) {
-      throw Error("Somehow the slider body has no state while there is a checkpoint alive.");
-    }
-    this.gameState.checkPointVerdict[id] = { hit: state.isTracking };
+    // A malformed checkpoint or floating-point drift must not abort the entire replay simulation.
+    const hit =
+      checkPoint.type === "LAST_LEGACY_TICK" && this.options.sliderTailLeniency < 0
+        ? state?.tailTrackingSatisfied ?? false
+        : state?.isTracking ?? false;
+    this.gameState.checkPointVerdict[id] = { hit };
     this.gameState.judgedObjects.push(id);
+  }
+
+  handleSliderTailLeniencyStart(time: number) {
+    this.updateSliderBodyTracking(time, this.predictedCursorPositionAt(time), this.gameState.pressingSince);
   }
 
   handleSpinnerStart(id: string) {
@@ -218,6 +267,9 @@ export class GameStateEvaluator {
         break;
       case "SLIDER_END":
         this.handleSliderEnding(time, hitObjectId);
+        break;
+      case "SLIDER_TAIL_LENIENCY_START":
+        this.handleSliderTailLeniencyStart(time);
         break;
       case "SLIDER_CHECK_POINT":
         this.handleSliderCheckPoint(time, hitObjectId);
@@ -319,7 +371,8 @@ export class GameStateEvaluator {
       const slider = this.beatmap.getSlider(id);
 
       const headHitTime: number | undefined = this.headHitTime(slider.head.id);
-      const wasTracking: boolean = this.gameState.sliderBodyState.get(id)?.isTracking ?? false;
+      const previousState = this.gameState.sliderBodyState.get(id);
+      const wasTracking: boolean = previousState?.isTracking ?? false;
       const hasRelax = this.beatmap.appliedMods.includes("RELAX");
       const isTracking = determineTracking(
         wasTracking,
@@ -330,7 +383,15 @@ export class GameStateEvaluator {
         headHitTime,
         hasRelax,
       );
-      this.gameState.sliderBodyState.set(id, { isTracking });
+      const insideTailLeniency =
+        this.options.sliderTailLeniency < 0 &&
+        time >= slider.endTime + this.options.sliderTailLeniency &&
+        time >= sliderTailLeniencyStartTime(slider, this.options.sliderTailLeniency) &&
+        time <= slider.endTime;
+      this.gameState.sliderBodyState.set(id, {
+        isTracking,
+        tailTrackingSatisfied: previousState?.tailTrackingSatisfied === true || (insideTailLeniency && isTracking),
+      });
     }
   }
 
@@ -376,8 +437,8 @@ const sliderProgress = (slider: Slider, time: number) => (time - slider.startTim
  * SliderTracking is described in a complicated way in osu!lazer, but it can be boiled down to:
  *
  * * A key must be pressed (?)
- * * Slider tracking is only done between slider.startTime (inclusively) and slider.endTime
- * (exclusively).
+ * * Slider tracking is done between slider.startTime and slider.endTime inclusively. The state is cleared after the
+ * tail has been judged.
  * * The follow circle is scaled up to 2.4 if tracking, and down to 1.0 if not tracking, the cursor should be
  * in the follow circle.
  * * Additionally there are two states of a slider:
@@ -409,8 +470,9 @@ function determineTracking(
   // Zeroth condition
   if (!keyIsBeingPressed && !hasRelax) return false;
 
-  // First condition
-  if (time < slider.startTime || slider.endTime <= time) return false;
+  // First condition. The final tail judgement is sampled at exactly endTime in lazer.
+  // Allow that one instant; SLIDER_END clears the tracking state immediately afterwards.
+  if (time < slider.startTime || slider.endTime < time) return false;
 
   // Second condition
   const progress = sliderProgress(slider, time);

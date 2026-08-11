@@ -1,5 +1,7 @@
 import { app, dialog, ipcMain } from "electron";
-import { read } from "node-osr";
+import { readExtendedReplay } from "@rewind/osu-local/osr-reader";
+import { queryLazerBeatmap } from "./lazerRealmReader";
+import { resolveLazerDataDirectory } from "./lazerDataDirectory";
 
 async function userSelectDirectory(defaultPath: string) {
   const { canceled, filePaths } = await dialog.showOpenDialog({ defaultPath, properties: ["openDirectory"] });
@@ -45,6 +47,12 @@ export function setupEventListeners() {
   });
 
   ipcMain.handle("readOsr", async (event, filePath) => {
-    return await read(filePath);
+    return await readExtendedReplay(filePath);
+  });
+  ipcMain.handle("queryLazerBeatmap", async (event, root, md5) => {
+    return await queryLazerBeatmap(root, md5);
+  });
+  ipcMain.handle("resolveLazerDataDirectory", async (event, configuredPath) => {
+    return await resolveLazerDataDirectory(configuredPath, app.getPath("appData"));
   });
 }

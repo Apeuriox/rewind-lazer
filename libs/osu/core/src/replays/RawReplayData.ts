@@ -4,6 +4,20 @@
  */
 import { OsuClassicMod, OsuClassicMods } from "../mods/Mods";
 
+/**
+ * osu!lazer uses a reserved version range when exporting scores to the legacy
+ * .osr container. Stable versions use their YYYYMMDD build number instead.
+ *
+ * Keep this in sync with LegacyScoreEncoder.FIRST_LAZER_VERSION in osu!lazer.
+ */
+export const FIRST_LAZER_REPLAY_VERSION = 30_000_000;
+
+export type ReplayClient = "STABLE" | "LAZER";
+
+export function replayClientFromVersion(gameVersion: number): ReplayClient {
+  return gameVersion >= FIRST_LAZER_REPLAY_VERSION ? "LAZER" : "STABLE";
+}
+
 export class RawReplayData {
   gameMode = 0;
   gameVersion = 0;

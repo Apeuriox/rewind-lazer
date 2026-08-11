@@ -42,11 +42,13 @@ export function RewindApp() {
     });
 
     (async function () {
+      await theater.analyzer.osuFolderService.ensureLazerFolder();
       if (!(await theater.analyzer.osuFolderService.hasValidOsuFolderSet())) {
         console.log("osu! folder was not set, redirecting to the setup screen.");
         navigate("/setup");
       } else {
         console.log(`osu! folder = ${theater.analyzer.osuFolderService.getOsuFolder()}`);
+        console.log(`osu!lazer folder = ${theater.analyzer.osuFolderService.getLazerFolder()}`);
         console.log(`osu!/Songs folder = ${theater.analyzer.osuFolderService.songsFolder$.getValue()}`);
         console.log(`osu!/Replays folder = ${theater.analyzer.osuFolderService.replaysFolder$.getValue()}`);
         navigate("/app/analyzer");

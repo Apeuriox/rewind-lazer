@@ -1,5 +1,5 @@
 import { injectable } from "inversify";
-import { Container } from "pixi.js";
+import { Container, Graphics } from "pixi.js";
 import { OsuClassicJudgement } from "@rewind/osu-pixi/classic-components";
 import { circleSizeToScale } from "@osujs/math";
 import { MainHitObjectVerdict } from "@osujs/core";
@@ -19,6 +19,26 @@ function texturesForJudgement(t: MainHitObjectVerdict, lastInComboSet?: boolean)
     case "MISS":
       return "HIT_0";
   }
+}
+
+const SLIDER_END_MISS_LIFETIME = 600;
+const SLIDER_END_MISS_SCALE = 0.75;
+
+function prepareSliderEndMissCross(timeAgo: number, x: number, y: number, objectScale: number) {
+  const cross = new Graphics();
+  const size = 9 * objectScale * SLIDER_END_MISS_SCALE;
+  const animationProgress = Math.min(timeAgo / 150, 1);
+  const animationScale = 1.4 - animationProgress * 0.4;
+
+  cross.lineStyle(Math.max(1.5, 3 * objectScale * SLIDER_END_MISS_SCALE), 0xffffff, 1);
+  cross.moveTo(-size, -size);
+  cross.lineTo(size, size);
+  cross.moveTo(size, -size);
+  cross.lineTo(-size, size);
+  cross.position.set(x, y);
+  cross.scale.set(animationScale);
+  cross.alpha = Math.max(0, 1 - timeAgo / SLIDER_END_MISS_LIFETIME);
+  return cross;
 }
 
 @injectable()
@@ -43,6 +63,16 @@ export class JudgementPreparer {
     const beatmap = this.beatmapManager.getBeatmap();
     const time = this.gameClock.timeElapsedInMs;
     const skin = this.stageSkinService.getSkin();
+    const objectScale = circleSizeToScale(beatmap.difficulty.circleSize);
+    for (const sliderEndMiss of this.gameSimulator.sliderEndMisses) {
+      const timeAgo = time - sliderEndMiss.time;
+      if (!(timeAgo >= 0 && timeAgo < SLIDER_END_MISS_LIFETIME)) continue;
+
+      this.container.addChild(
+        prepareSliderEndMissCross(timeAgo, sliderEndMiss.position.x, sliderEndMiss.position.y, objectScale),
+      );
+    }
+
     const judgements = this.gameSimulator.judgements;
     // TODO: Order might not be correct
     for (const j of judgements) {
@@ -53,13 +83,12 @@ export class JudgementPreparer {
       const textures = skin.getTextures(texturesForJudgement(j.verdict, lastInComboSet));
       const animationFrameRate = skin.config.general.animationFrameRate;
       const judgement = new OsuClassicJudgement();
-      const scale = circleSizeToScale(beatmap.difficulty.circleSize);
 
       // TODO: Should be configurable, technically speaking sliderHeadJudgementSkip=false does not reflect osu!stable
       // (it resembles lazer) However, in this replay analysis tool this is more useful (?)
-      const sliderHeadJudgementSkip = true;
+      const sliderHeadJudgementSkip = this.gameSimulator.getReplayClient() !== "LAZER";
       if (sliderHeadJudgementSkip && j.isSliderHead) continue;
-      judgement.prepare({ time: timeAgo, position: j.position, scale, animationFrameRate, textures });
+      judgement.prepare({ time: timeAgo, position: j.position, scale: objectScale, animationFrameRate, textures });
       // judgement.sprite.zIndex = -timeAgo;
       this.container.addChild(judgement.sprite);
     }

@@ -17,6 +17,7 @@ import { approachRateToApproachDuration, circleSizeToScale, Position } from "@os
 import { OsuHitObject } from "../hitobjects/Types";
 import { HardRockMod } from "../mods/HardRockMod";
 import { PathControlPoint } from "../hitobjects/slider/PathControlPoint";
+import { ReplayClient } from "../replays/RawReplayData";
 
 function copyPosition({ x, y }: Position): Position {
   return { x, y };
@@ -81,6 +82,7 @@ function createSlider(
   sliderSettings: SliderSettings,
   controlPointInfo: ControlPointInfo,
   difficulty: BeatmapDifficulty,
+  replayClient: ReplayClient,
 ): Slider {
   const approachDuration = approachRateToApproachDuration(difficulty.approachRate);
   const scale = circleSizeToScale(difficulty.circleSize);
@@ -102,7 +104,7 @@ function createSlider(
   const slider = new Slider(head);
   slider.id = sliderId;
   slider.repeatCount = sliderSettings.repeatCount;
-  slider.legacyLastTickOffset = sliderSettings.legacyLastTickOffset;
+  slider.legacyLastTickOffset = replayClient === "LAZER" ? 0 : sliderSettings.legacyLastTickOffset;
   slider.velocity = scoringDistance / timingPoint.beatLength;
   slider.tickDistance = (scoringDistance / difficulty.sliderTickRate) * sliderSettings.tickDistanceMultiplier;
   slider.path = new SliderPath(copyPathPoints(sliderSettings.pathPoints), sliderSettings.length);
@@ -128,6 +130,7 @@ function createStaticHitObject(
   hitObjectSetting: HitObjectSettings,
   controlPointInfo: ControlPointInfo,
   beatmapDifficulty: BeatmapDifficulty,
+  replayClient: ReplayClient,
 ): OsuHitObject {
   switch (hitObjectSetting.type) {
     case "HIT_CIRCLE":
@@ -138,7 +141,7 @@ function createStaticHitObject(
         beatmapDifficulty,
       );
     case "SLIDER":
-      return createSlider(index, hitObjectSetting as SliderSettings, controlPointInfo, beatmapDifficulty);
+      return createSlider(index, hitObjectSetting as SliderSettings, controlPointInfo, beatmapDifficulty, replayClient);
     case "SPINNER":
       return createSpinner(index.toString(), hitObjectSetting as SpinnerSettings, controlPointInfo, beatmapDifficulty);
   }
@@ -183,11 +186,14 @@ function findDifficultyApplier(mods: OsuClassicMod[]): BeatmapDifficultyAdjuster
 interface BeatmapBuilderOptions {
   addStacking: boolean;
   mods: OsuClassicMod[];
+  clockRate?: number;
+  replayClient: ReplayClient;
 }
 
 const defaultBeatmapBuilderOptions: BeatmapBuilderOptions = {
   addStacking: true,
   mods: [],
+  replayClient: "STABLE",
 };
 
 /**
@@ -202,12 +208,12 @@ const defaultBeatmapBuilderOptions: BeatmapBuilderOptions = {
  */
 export function buildBeatmap(bluePrint: Blueprint, options?: Partial<BeatmapBuilderOptions>): Beatmap {
   const { beatmapVersion, stackLeniency } = bluePrint.blueprintInfo;
-  const { mods, addStacking } = { ...defaultBeatmapBuilderOptions, ...options };
+  const { mods, addStacking, clockRate, replayClient } = { ...defaultBeatmapBuilderOptions, ...options };
 
   const finalDifficulty = findDifficultyApplier(mods)(bluePrint.defaultDifficulty);
 
   const hitObjects: OsuHitObject[] = bluePrint.hitObjectSettings.map((setting, index) =>
-    createStaticHitObject(index, setting, bluePrint.controlPointInfo, finalDifficulty),
+    createStaticHitObject(index, setting, bluePrint.controlPointInfo, finalDifficulty, replayClient),
   );
 
   assignComboIndex(bluePrint.hitObjectSettings, hitObjects);
@@ -220,5 +226,5 @@ export function buildBeatmap(bluePrint: Blueprint, options?: Partial<BeatmapBuil
     modifyStackingPosition(hitObjects, stackLeniency, beatmapVersion);
   }
 
-  return new Beatmap(hitObjects, finalDifficulty, mods, bluePrint.controlPointInfo);
+  return new Beatmap(hitObjects, finalDifficulty, mods, bluePrint.controlPointInfo, clockRate);
 }

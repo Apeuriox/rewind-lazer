@@ -6,7 +6,11 @@ import {
   GameplayInfoEvaluator,
   GameState,
   HitObjectJudgement,
+  CheckpointJudgement,
   isHitObjectJudgement,
+  isMissedSliderEndJudgement,
+  gameStateEvaluatorOptionsForClient,
+  ReplayClient,
   ReplayAnalysisEvent,
   retrieveEvents,
 } from "@osujs/core";
@@ -26,12 +30,16 @@ export class GameSimulator {
   private currentInfo: GameplayInfo = defaultGameplayInfo;
   public replayEvents$: BehaviorSubject<ReplayAnalysisEvent[]>;
   public difficulties$: BehaviorSubject<number[]>;
+  public replayClient$: BehaviorSubject<ReplayClient | null>;
   public judgements: HitObjectJudgement[] = [];
+  public sliderEndMisses: CheckpointJudgement[] = [];
   public hits: [number, number, boolean][] = [];
+  private replayLoadedAtMs?: number;
 
   constructor() {
     this.replayEvents$ = new BehaviorSubject<ReplayAnalysisEvent[]>([]);
     this.difficulties$ = new BehaviorSubject<number[]>([]);
+    this.replayClient$ = new BehaviorSubject<ReplayClient | null>(null);
   }
 
   calculateDifficulties(rawBeatmap: string, durationInMs: number, mods: number) {
@@ -82,17 +90,21 @@ export class GameSimulator {
   calculateHitErrorArray() {}
 
   simulateReplay(beatmap: Beatmap, replay: OsuReplay) {
-    this.gameplayTimeMachine = new BucketedGameStateTimeMachine(replay.frames, beatmap, {
-      hitWindowStyle: "OSU_STABLE",
-      noteLockStyle: "STABLE",
-    });
-    this.gameplayEvaluator = new GameplayInfoEvaluator(beatmap, {});
+    this.replayClient$.next(replay.client);
+    this.gameplayTimeMachine = new BucketedGameStateTimeMachine(
+      replay.frames,
+      beatmap,
+      gameStateEvaluatorOptionsForClient(replay.client),
+    );
+    this.gameplayEvaluator = new GameplayInfoEvaluator(beatmap, { replayClient: replay.client });
     // TODO: Move this to async ...
     this.lastState = this.gameplayTimeMachine.gameStateAt(1e9);
     this.currentInfo = defaultGameplayInfo;
     // this.currentState = finalState...
-    this.replayEvents$.next(retrieveEvents(this.lastState, beatmap.hitObjects));
-    this.judgements = this.replayEvents$.getValue().filter(isHitObjectJudgement);
+    this.replayEvents$.next(retrieveEvents(this.lastState, beatmap.hitObjects, replay.client));
+    const replayEvents = this.replayEvents$.getValue();
+    this.judgements = replayEvents.filter(isHitObjectJudgement);
+    this.sliderEndMisses = replay.client === "LAZER" ? replayEvents.filter(isMissedSliderEndJudgement) : [];
 
     this.hits = [];
     if (!this.lastState) return;
@@ -110,6 +122,7 @@ export class GameSimulator {
     }
     // not sure if this is needed
     this.hits.sort((a, b) => a[0] - b[0]);
+    this.replayLoadedAtMs = performance.now();
   }
 
   // Simulates the game to be at the given time
@@ -129,6 +142,14 @@ export class GameSimulator {
     return this.currentInfo;
   }
 
+  getReplayClient() {
+    return this.replayClient$.getValue();
+  }
+
+  getReplayAgeMs() {
+    return this.replayLoadedAtMs === undefined ? Number.POSITIVE_INFINITY : performance.now() - this.replayLoadedAtMs;
+  }
+
   // Very likely to be a request from the UI since it wants to render the playbar events
   async calculateEvents() {
     // In case it takes unbearably long -> we might need a web worker
@@ -137,5 +158,9 @@ export class GameSimulator {
   clear() {
     this.replayEvents$.next([]);
     this.difficulties$.next([]);
+    this.replayClient$.next(null);
+    this.judgements = [];
+    this.sliderEndMisses = [];
+    this.replayLoadedAtMs = undefined;
   }
 }

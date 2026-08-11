@@ -55,40 +55,40 @@ const setupWikiUrl = "https://github.com/abstrakt8/rewind/wiki/Setup";
 
 // TODO: Maybe tell which file is actually missing
 export function SetupScreen() {
-  // TODO: Add a guess for directory path
-  const [directoryPath, setDirectoryPath] = useState<string | null>(null);
+  const analyzer = useAnalysisApp();
+  const [stablePath, setStablePath] = useState<string | null>(analyzer.osuFolderService.getOsuFolder() || null);
+  const [lazerPath, setLazerPath] = useState<string | null>(analyzer.osuFolderService.getLazerFolder() || null);
   const [saveEnabled, setSaveEnabled] = useState(false);
   const navigate = useNavigate();
-  const analyzer = useAnalysisApp();
   // const [updateOsuDirectory, updateState] = useUpdateOsuDirectoryMutation();
   const [showErrorMessage, setShowErrorMessage] = useState(false);
 
   const handleConfirmClick = useCallback(async () => {
-    if (!directoryPath) {
-      return;
-    }
-    const isValid = await analyzer.osuFolderService.isValidOsuFolder(directoryPath);
-    if (isValid) {
-      analyzer.osuFolderService.setOsuFolder(directoryPath);
+    const stableValid = !stablePath || (await analyzer.osuFolderService.isValidOsuFolder(stablePath));
+    const lazerValid = !lazerPath || (await analyzer.osuFolderService.isValidLazerFolder(lazerPath));
+    if ((stablePath || lazerPath) && stableValid && lazerValid) {
+      analyzer.osuFolderService.setOsuFolder(stablePath ?? "");
+      analyzer.osuFolderService.setLazerFolder(lazerPath ?? "");
       navigate("/app/analyzer");
     } else {
       setShowErrorMessage(true);
     }
-  }, [navigate, analyzer.osuFolderService, directoryPath]);
+  }, [navigate, analyzer.osuFolderService, stablePath, lazerPath]);
 
-  const handleOnDirectoryChange = useCallback(
-    (path: string | null) => {
-      setDirectoryPath(path);
-      // TODO: Just directly validate since it's so fast
-      setShowErrorMessage(false);
-    },
-    [setShowErrorMessage],
-  );
+  const handleStablePathChange = useCallback((path: string | null) => {
+    setStablePath(path);
+    setShowErrorMessage(false);
+  }, []);
+
+  const handleLazerPathChange = useCallback((path: string | null) => {
+    setLazerPath(path);
+    setShowErrorMessage(false);
+  }, []);
 
   // Makes sure that the button is only clickable when it's allowed.
   useEffect(() => {
-    setSaveEnabled(directoryPath !== null);
-  }, [directoryPath]);
+    setSaveEnabled(!!stablePath || !!lazerPath);
+  }, [stablePath, lazerPath]);
 
   return (
     <Box
@@ -105,15 +105,21 @@ export function SetupScreen() {
           {showErrorMessage && (
             <>
               <Alert severity="error" variant="filled">
-                <div>Does not look a valid osu! directory!</div>
+                <div>Please select a valid osu!stable or osu!lazer data directory.</div>
               </Alert>
             </>
           )}
           <DirectorySelection
-            value={directoryPath}
-            onChange={handleOnDirectoryChange}
-            placeHolder={"Select your osu! directory"}
-            badgeOnEmpty={true}
+            value={stablePath}
+            onChange={handleStablePathChange}
+            placeHolder={"Select osu!stable directory (optional)"}
+            badgeOnEmpty={!lazerPath}
+          />
+          <DirectorySelection
+            value={lazerPath}
+            onChange={handleLazerPathChange}
+            placeHolder={"Select osu!lazer data directory (optional)"}
+            badgeOnEmpty={!stablePath}
           />
           <Stack direction={"row-reverse"} gap={2}>
             <Button

@@ -1,5 +1,6 @@
 import Ajv from "ajv";
 import { SkinSettings, SkinSettingsSchema } from "../src/app/services/common/skin";
+import { OsuSettings, OsuSettingsSchema } from "../src/app/services/common/local/OsuFolderService";
 
 describe("validateSkinSettings", () => {
   const ajv = new Ajv({ useDefaults: true });
@@ -36,5 +37,26 @@ describe("validateSkinSettings", () => {
       // Below should not compile
       // expect(data.preferredSkinId2).toEqual("x");
     }
+  });
+});
+
+describe("validateOsuSettings", () => {
+  const ajv = new Ajv({ useDefaults: true });
+  const validateOsuSettings = ajv.compile<OsuSettings>(OsuSettingsSchema);
+
+  it("defaults existing user settings to the stable replay folder", () => {
+    const data = { osuStablePath: "C:\\osu!", osuLazerPath: "D:\\osu-lazer" };
+
+    expect(validateOsuSettings(data)).toBe(true);
+    expect(data).toEqual({
+      osuStablePath: "C:\\osu!",
+      osuLazerPath: "D:\\osu-lazer",
+      defaultReplayClient: "STABLE",
+    });
+  });
+
+  it("accepts lazer as the configured replay folder", () => {
+    const data = { osuStablePath: "", osuLazerPath: "D:\\osu-lazer", defaultReplayClient: "LAZER" };
+    expect(validateOsuSettings(data)).toBe(true);
   });
 });

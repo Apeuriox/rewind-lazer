@@ -5,6 +5,7 @@ import {
   Button,
   FormControlLabel,
   FormGroup,
+  MenuItem,
   Modal,
   Paper,
   Slider,
@@ -14,8 +15,8 @@ import {
   Typography,
 } from "@mui/material";
 import { BaseSettingsModal } from "./BaseSettingsModal";
-import { useCommonManagers } from "../../providers/TheaterProvider";
-import { useCallback, useEffect, useMemo } from "react";
+import { useAnalysisApp, useCommonManagers } from "../../providers/TheaterProvider";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useObservable } from "rxjs-hooks";
 import { DEFAULT_HIT_ERROR_BAR_SETTINGS } from "../../services/common/hit-error-bar";
 import { DEFAULT_PLAY_BAR_SETTINGS } from "../../services/common/playbar";
@@ -216,9 +217,75 @@ function ResetAllSettingsSection() {
   );
 }
 
+function LocalInstallationsSettings() {
+  const analyzer = useAnalysisApp();
+  const settings = useObservable(() => analyzer.osuFolderService.settings$, {
+    osuStablePath: "",
+    osuLazerPath: "",
+    defaultReplayClient: "STABLE" as const,
+  });
+  const [error, setError] = useState("");
+
+  const selectFolder = useCallback(
+    async (client: "STABLE" | "LAZER") => {
+      const current = client === "STABLE" ? settings.osuStablePath : settings.osuLazerPath;
+      const path = await frontendAPI.selectDirectory(current);
+      if (!path) return;
+
+      const valid =
+        client === "STABLE"
+          ? await analyzer.osuFolderService.isValidOsuFolder(path)
+          : await analyzer.osuFolderService.isValidLazerFolder(path);
+      if (!valid) {
+        setError(`The selected folder is not a valid osu!${client === "STABLE" ? "stable" : "lazer"} directory.`);
+        return;
+      }
+
+      setError("");
+      if (client === "STABLE") analyzer.osuFolderService.setOsuFolder(path);
+      else analyzer.osuFolderService.setLazerFolder(path);
+    },
+    [analyzer.osuFolderService, settings.osuLazerPath, settings.osuStablePath],
+  );
+
+  return (
+    <Paper sx={{ boxShadow: "none", p: 2 }}>
+      <Stack gap={2}>
+        <Typography variant={"h6"}>Local osu! Installations</Typography>
+        <Stack direction={"row"} gap={1}>
+          <TextField fullWidth label="osu!stable" value={settings.osuStablePath} InputProps={{ readOnly: true }} />
+          <Button variant="outlined" onClick={() => void selectFolder("STABLE")}>
+            Browse
+          </Button>
+        </Stack>
+        <Stack direction={"row"} gap={1}>
+          <TextField fullWidth label="osu!lazer" value={settings.osuLazerPath} InputProps={{ readOnly: true }} />
+          <Button variant="outlined" onClick={() => void selectFolder("LAZER")}>
+            Browse
+          </Button>
+        </Stack>
+        <TextField
+          select
+          fullWidth
+          label="Default replay folder"
+          value={settings.defaultReplayClient}
+          onChange={(event) =>
+            analyzer.osuFolderService.setDefaultReplayClient(event.target.value as "STABLE" | "LAZER")
+          }
+        >
+          <MenuItem value="STABLE">osu!stable / Replays</MenuItem>
+          <MenuItem value="LAZER">osu!lazer / exports</MenuItem>
+        </TextField>
+        {error && <Typography color="error">{error}</Typography>}
+      </Stack>
+    </Paper>
+  );
+}
+
 function OtherSettings() {
   return (
     <Stack p={2} gap={1}>
+      <LocalInstallationsSettings />
       <ResetAllSettingsSection />
     </Stack>
   );

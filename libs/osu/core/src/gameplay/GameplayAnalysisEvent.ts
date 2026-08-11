@@ -5,6 +5,7 @@ import { Slider } from "../hitobjects/Slider";
 import { HitCircle } from "../hitobjects/HitCircle";
 import { MainHitObjectVerdict } from "./Verdicts";
 import { OsuHitObject } from "../hitobjects/Types";
+import { ReplayClient } from "../replays/RawReplayData";
 
 /**
  * ReplayAnalysisEvents are point of interests for the user.
@@ -37,6 +38,8 @@ export interface HitObjectJudgement extends DisplayBase {
 export interface CheckpointJudgement extends DisplayBase {
   type: "CheckpointJudgement";
   hit: boolean;
+  sliderId: string;
+  sliderHeadHit: boolean;
   // Usually not the causing factor of a slider break
   isLastTick?: boolean;
 }
@@ -52,9 +55,16 @@ export type ReplayAnalysisEvent = HitObjectJudgement | CheckpointJudgement | Unn
 export const isHitObjectJudgement = (h: ReplayAnalysisEvent): h is HitObjectJudgement =>
   h.type === "HitObjectJudgement";
 
+export const isMissedSliderEndJudgement = (event: ReplayAnalysisEvent): event is CheckpointJudgement =>
+  event.type === "CheckpointJudgement" && event.isLastTick === true && !event.hit && event.sliderHeadHit;
+
 // This is osu!stable style and is also only recommended for offline processing.
 // In the future, where something like online replay streaming is implemented, this implementation will ofc be too slow.
-export function retrieveEvents(gameState: GameState, hitObjects: OsuHitObject[]) {
+export function retrieveEvents(
+  gameState: GameState,
+  hitObjects: OsuHitObject[],
+  replayClient: ReplayClient = "STABLE",
+) {
   const events: ReplayAnalysisEvent[] = [];
   const dict = normalizeHitObjects(hitObjects);
 
@@ -75,11 +85,18 @@ export function retrieveEvents(gameState: GameState, hitObjects: OsuHitObject[])
   }
 
   for (const id in gameState.sliderVerdict) {
-    const verdict = gameState.sliderVerdict[id];
-    // Slider judgement events
     const slider = dict[id] as Slider;
-    const position = slider.endPosition;
-    events.push({ time: slider.endTime, hitObjectId: id, position, verdict, type: "HitObjectJudgement" });
+    const sliderHeadVerdict = gameState.hitCircleVerdict[slider.head.id];
+    const sliderHeadHit = sliderHeadVerdict !== undefined && sliderHeadVerdict.type !== "MISS";
+
+    // Stable displays an aggregate slider judgement at the tail. Lazer only
+    // displays the nested head/tick/end judgements, so emitting this would add
+    // a bogus 300/100/50/Miss after the slider has already been judged.
+    if (replayClient === "STABLE") {
+      const verdict = gameState.sliderVerdict[id];
+      const position = slider.endPosition;
+      events.push({ time: slider.endTime, hitObjectId: id, position, verdict, type: "HitObjectJudgement" });
+    }
 
     // CheckpointEvents
     for (const point of slider.checkPoints) {
@@ -87,7 +104,15 @@ export function retrieveEvents(gameState: GameState, hitObjects: OsuHitObject[])
       const hit = checkPointState?.hit ?? false;
 
       const isLastTick = point.type === "LAST_LEGACY_TICK";
-      events.push({ time: slider.endTime, position: point.position, type: "CheckpointJudgement", hit, isLastTick });
+      events.push({
+        time: point.hitTime,
+        position: point.position,
+        type: "CheckpointJudgement",
+        hit,
+        sliderId: slider.id,
+        sliderHeadHit,
+        isLastTick,
+      });
     }
   }
 

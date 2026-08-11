@@ -9,7 +9,7 @@ import { ipcRenderer } from "electron";
 import { PersistentService } from "../../core/service";
 import { JSONSchemaType } from "ajv";
 
-const filesToCheck = ["osu!.db", "scores.db", "Skins"];
+const stableFilesToCheck = ["osu!.db", "scores.db", "Skins"];
 
 /**
  * Checks certain files to see if Rewind can be booted without any problems with the given `osuFolderPath`.
@@ -17,7 +17,7 @@ const filesToCheck = ["osu!.db", "scores.db", "Skins"];
  */
 export async function osuFolderSanityCheck(osuFolderPath: string) {
   try {
-    await Promise.all(filesToCheck.map((f) => access(join(osuFolderPath, f), constants.R_OK)));
+    await Promise.all(stableFilesToCheck.map((f) => access(join(osuFolderPath, f), constants.R_OK)));
   } catch (err) {
     console.log(err);
     return false;
@@ -25,17 +25,27 @@ export async function osuFolderSanityCheck(osuFolderPath: string) {
   return true;
 }
 
-interface OsuSettings {
+export interface OsuSettings {
   osuStablePath: string;
+  osuLazerPath: string;
+  defaultReplayClient: "STABLE" | "LAZER";
 }
 
 export const DEFAULT_OSU_SETTINGS: OsuSettings = Object.freeze({
   osuStablePath: "",
+  osuLazerPath: "",
+  defaultReplayClient: "STABLE",
 });
 export const OsuSettingsSchema: JSONSchemaType<OsuSettings> = {
   type: "object",
   properties: {
     osuStablePath: { type: "string", default: DEFAULT_OSU_SETTINGS.osuStablePath },
+    osuLazerPath: { type: "string", default: DEFAULT_OSU_SETTINGS.osuLazerPath },
+    defaultReplayClient: {
+      type: "string",
+      enum: ["STABLE", "LAZER"],
+      default: DEFAULT_OSU_SETTINGS.defaultReplayClient,
+    },
   },
   required: [],
 };
@@ -43,6 +53,7 @@ export const OsuSettingsSchema: JSONSchemaType<OsuSettings> = {
 @injectable()
 export class OsuFolderService extends PersistentService<OsuSettings> {
   public replaysFolder$ = new BehaviorSubject<string>("");
+  public watchedReplayFolders$ = new BehaviorSubject<string[]>([]);
   public songsFolder$ = new BehaviorSubject<string>("");
 
   key = "osu-settings";
@@ -59,10 +70,15 @@ export class OsuFolderService extends PersistentService<OsuSettings> {
 
   async onFolderChange(osuSettings: OsuSettings) {
     const { osuStablePath } = osuSettings;
-    ipcRenderer.send("osuFolderChanged", osuStablePath);
-    this.replaysFolder$.next(join(osuStablePath, "Replays"));
+    ipcRenderer.send("osuFolderChanged", osuStablePath, osuSettings.osuLazerPath, osuSettings.defaultReplayClient);
+    const stableReplayFolder = osuStablePath ? join(osuStablePath, "Replays") : "";
+    const lazerReplayFolder = osuSettings.osuLazerPath ? join(osuSettings.osuLazerPath, "exports") : "";
+    this.replaysFolder$.next(stableReplayFolder);
+    this.watchedReplayFolders$.next([stableReplayFolder, lazerReplayFolder].filter(Boolean));
     const userId = await username();
-    this.songsFolder$.next((await determineSongsFolder(osuStablePath, userId as string)) as string);
+    this.songsFolder$.next(
+      osuStablePath ? ((await determineSongsFolder(osuStablePath, userId as string)) as string) : "",
+    );
   }
 
   getOsuFolder(): string {
@@ -74,11 +90,43 @@ export class OsuFolderService extends PersistentService<OsuSettings> {
     this.changeSettings((draft) => (draft.osuStablePath = path));
   }
 
+  getLazerFolder(): string {
+    return this.settings.osuLazerPath;
+  }
+
+  setLazerFolder(path: string) {
+    console.log(`osu!lazer folder was set to '${path}'`);
+    this.changeSettings((draft) => (draft.osuLazerPath = path));
+  }
+
+  setDefaultReplayClient(client: "STABLE" | "LAZER") {
+    this.changeSettings((draft) => (draft.defaultReplayClient = client));
+  }
+
+  async resolveLazerFolder(path = this.getLazerFolder()): Promise<string | null> {
+    return await ipcRenderer.invoke("resolveLazerDataDirectory", path);
+  }
+
+  async ensureLazerFolder(): Promise<string> {
+    const resolvedPath = await this.resolveLazerFolder();
+    if (resolvedPath && resolvedPath !== this.getLazerFolder()) this.setLazerFolder(resolvedPath);
+    return resolvedPath ?? "";
+  }
+
   async isValidOsuFolder(directoryPath: string) {
     return osuFolderSanityCheck(directoryPath);
   }
 
   async hasValidOsuFolderSet(): Promise<boolean> {
-    return this.isValidOsuFolder(this.getOsuFolder());
+    return (await this.hasValidStableFolderSet()) || this.isValidLazerFolder(this.getLazerFolder());
+  }
+
+  async hasValidStableFolderSet(): Promise<boolean> {
+    const folder = this.getOsuFolder();
+    return !!folder && this.isValidOsuFolder(folder);
+  }
+
+  async isValidLazerFolder(directoryPath: string) {
+    return !!(await this.resolveLazerFolder(directoryPath));
   }
 }

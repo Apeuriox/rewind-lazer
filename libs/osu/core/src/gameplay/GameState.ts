@@ -30,6 +30,8 @@ export type CheckPointState = {
 
 export type SliderBodyState = {
   isTracking: boolean;
+  /** Whether lazer tracking was active at least once during the tail leniency window. */
+  tailTrackingSatisfied: boolean;
 };
 
 export type SpinnerState = {
