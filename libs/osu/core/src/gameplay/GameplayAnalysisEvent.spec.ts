@@ -48,6 +48,8 @@ describe("retrieveEvents", () => {
         type: "CheckpointJudgement",
         hit: true,
         isLastTick: true,
+        sliderId: slider.id,
+        sliderHeadHit: false,
       }),
     );
     expect(stableEvents).toContainEqual(
@@ -55,6 +57,34 @@ describe("retrieveEvents", () => {
         type: "HitObjectJudgement",
         hitObjectId: slider.id,
         verdict: "OK",
+      }),
+    );
+  });
+
+  it("marks a missed lazer slider end for display when the slider head was hit", () => {
+    const head = new HitCircle();
+    head.id = "0/HEAD";
+    head.sliderId = "0";
+
+    const slider = new Slider(head);
+    slider.id = "0";
+    const end = new SliderCheckPoint(slider);
+    end.id = "0/END";
+    end.type = "LAST_LEGACY_TICK";
+    slider.checkPoints.push(end);
+
+    const state = defaultGameState();
+    state.hitCircleVerdict[head.id] = { type: "GREAT", judgementTime: 0 };
+    state.sliderVerdict[slider.id] = "OK";
+    state.checkPointVerdict[end.id] = { hit: false };
+
+    expect(retrieveEvents(state, [slider], "LAZER")).toContainEqual(
+      expect.objectContaining({
+        type: "CheckpointJudgement",
+        hit: false,
+        isLastTick: true,
+        sliderId: slider.id,
+        sliderHeadHit: true,
       }),
     );
   });

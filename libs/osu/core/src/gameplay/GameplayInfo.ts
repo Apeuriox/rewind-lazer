@@ -14,7 +14,7 @@ import { ReplayClient } from "../replays/RawReplayData";
 export interface GameplayInfo {
   accuracy: number;
   // osu!stable: 300, 100, 50, 0
-  // osu!lazer:  300, 100, 50, 25, 10, 0 (or something like that, small ticks are from sliders and count towards acc)
+  // osu!lazer exposes main judgement counts here; slider ticks and ends are tracked separately below.
   verdictCounts: number[];
   score: number;
   currentCombo: number;
@@ -57,6 +57,29 @@ function updateComboInfo(combo: ReplayComboInformation, type: HitObjectType | Sl
 
 /** ACC **/
 
+const MAIN_JUDGEMENT_SCORES = [300, 100, 50, 0] as const;
+const MAIN_JUDGEMENT_SCORE_BY_VERDICT: Record<MainHitObjectVerdict, number> = {
+  GREAT: 300,
+  OK: 100,
+  MEH: 50,
+  MISS: 0,
+};
+const LAZER_SLIDER_TICK_SCORE = 30;
+const LAZER_SLIDER_END_SCORE = 150;
+
+function mainJudgementAccuracyScore(count: number[]) {
+  if (count.length !== MAIN_JUDGEMENT_SCORES.length) return undefined;
+
+  let actual = 0;
+  let maximum = 0;
+  for (let i = 0; i < count.length; i++) {
+    actual += MAIN_JUDGEMENT_SCORES[i] * count[i];
+    maximum += MAIN_JUDGEMENT_SCORES[0] * count[i];
+  }
+
+  return { actual, maximum };
+}
+
 /**
  * Returns a number between 0 and 1 using osu!stable accuracy logic.
  * Also returns undefined if there is no count
@@ -64,23 +87,15 @@ function updateComboInfo(combo: ReplayComboInformation, type: HitObjectType | Sl
  * @param count counts of 300, 100, 50, 0 (in this order)
  */
 export function osuStableAccuracy(count: number[]): number | undefined {
-  if (count.length !== 4) {
-    return undefined;
-  }
-  const JudgementScores = [300, 100, 50, 0];
+  const score = mainJudgementAccuracyScore(count);
+  if (!score || score.maximum === 0) return undefined;
 
-  let perfect = 0,
-    actual = 0;
-  for (let i = 0; i < count.length; i++) {
-    actual += JudgementScores[i] * count[i];
-    perfect += JudgementScores[0] * count[i];
-  }
+  return score.actual / score.maximum;
+}
 
-  if (perfect === 0) {
-    return undefined;
-  }
-
-  return actual / perfect;
+export function osuLazerAccuracy(currentBaseScore: number, currentMaximumBaseScore: number): number | undefined {
+  if (currentMaximumBaseScore === 0) return undefined;
+  return currentBaseScore / currentMaximumBaseScore;
 }
 
 /** SCORE **/
@@ -122,6 +137,8 @@ export class GameplayInfoEvaluator {
   verdictCount: StableVerdictCount;
   sliderTickHits: number;
   sliderEndHits: number;
+  lazerCurrentBaseScore: number;
+  lazerCurrentMaximumBaseScore: number;
 
   constructor(private beatmap: Beatmap, options?: Partial<EvaluationOption>) {
     this.options = { ...defaultEvaluationOptions, ...options };
@@ -129,6 +146,8 @@ export class GameplayInfoEvaluator {
     this.verdictCount = { MISS: 0, MEH: 0, GREAT: 0, OK: 0 };
     this.sliderTickHits = 0;
     this.sliderEndHits = 0;
+    this.lazerCurrentBaseScore = 0;
+    this.lazerCurrentMaximumBaseScore = 0;
     this.judgedObjectsIndex = 0;
     // TODO: Do some initialization for calculating ScoreV2 (like max score)
   }
@@ -138,11 +157,26 @@ export class GameplayInfoEvaluator {
     const affectsAccuracy = this.options.replayClient === "LAZER" ? hitObjectType !== "SLIDER" : !isSliderHead;
     if (affectsAccuracy) {
       this.verdictCount[verdict] += 1;
+
+      if (this.options.replayClient === "LAZER") {
+        // Mirrors ScoreProcessor.ApplyResultInternal(): the judgement's MaxResult
+        // contributes to the denominator and its actual result contributes to the numerator.
+        this.lazerCurrentMaximumBaseScore += MAIN_JUDGEMENT_SCORE_BY_VERDICT.GREAT;
+        this.lazerCurrentBaseScore += MAIN_JUDGEMENT_SCORE_BY_VERDICT[verdict];
+      }
     }
   }
 
   evaluateSliderCheckpoint(hitObjectType: SliderCheckPointType, hit: boolean) {
     this.comboInfo = updateComboInfo(this.comboInfo, hitObjectType, hit);
+
+    if (this.options.replayClient === "LAZER") {
+      const checkpointScore =
+        hitObjectType === "LAST_LEGACY_TICK" ? LAZER_SLIDER_END_SCORE : LAZER_SLIDER_TICK_SCORE;
+      this.lazerCurrentMaximumBaseScore += checkpointScore;
+      if (hit) this.lazerCurrentBaseScore += checkpointScore;
+    }
+
     if (!hit) return;
 
     if (hitObjectType === "LAST_LEGACY_TICK") {
@@ -163,6 +197,8 @@ export class GameplayInfoEvaluator {
       this.verdictCount = { MISS: 0, MEH: 0, GREAT: 0, OK: 0 };
       this.sliderTickHits = 0;
       this.sliderEndHits = 0;
+      this.lazerCurrentBaseScore = 0;
+      this.lazerCurrentMaximumBaseScore = 0;
       this.judgedObjectsIndex = 0;
     }
 
@@ -187,10 +223,14 @@ export class GameplayInfoEvaluator {
     }
 
     const counts = this.countAsArray();
+    const accuracy =
+      this.options.replayClient === "LAZER"
+        ? osuLazerAccuracy(this.lazerCurrentBaseScore, this.lazerCurrentMaximumBaseScore)
+        : osuStableAccuracy(counts);
     return {
       score: 0,
       verdictCounts: counts,
-      accuracy: osuStableAccuracy(counts) ?? 1.0,
+      accuracy: accuracy ?? 1.0,
       currentCombo: this.comboInfo.currentCombo,
       maxComboSoFar: this.comboInfo.maxComboSoFar,
       sliderTickHits: this.sliderTickHits,

@@ -6,7 +6,9 @@ import {
   GameplayInfoEvaluator,
   GameState,
   HitObjectJudgement,
+  CheckpointJudgement,
   isHitObjectJudgement,
+  isMissedSliderEndJudgement,
   gameStateEvaluatorOptionsForClient,
   ReplayClient,
   ReplayAnalysisEvent,
@@ -30,6 +32,7 @@ export class GameSimulator {
   public difficulties$: BehaviorSubject<number[]>;
   public replayClient$: BehaviorSubject<ReplayClient | null>;
   public judgements: HitObjectJudgement[] = [];
+  public sliderEndMisses: CheckpointJudgement[] = [];
   public hits: [number, number, boolean][] = [];
   private replayLoadedAtMs?: number;
 
@@ -99,7 +102,9 @@ export class GameSimulator {
     this.currentInfo = defaultGameplayInfo;
     // this.currentState = finalState...
     this.replayEvents$.next(retrieveEvents(this.lastState, beatmap.hitObjects, replay.client));
-    this.judgements = this.replayEvents$.getValue().filter(isHitObjectJudgement);
+    const replayEvents = this.replayEvents$.getValue();
+    this.judgements = replayEvents.filter(isHitObjectJudgement);
+    this.sliderEndMisses = replay.client === "LAZER" ? replayEvents.filter(isMissedSliderEndJudgement) : [];
 
     this.hits = [];
     if (!this.lastState) return;
@@ -154,6 +159,8 @@ export class GameSimulator {
     this.replayEvents$.next([]);
     this.difficulties$.next([]);
     this.replayClient$.next(null);
+    this.judgements = [];
+    this.sliderEndMisses = [];
     this.replayLoadedAtMs = undefined;
   }
 }

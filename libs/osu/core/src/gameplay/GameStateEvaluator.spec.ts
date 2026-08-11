@@ -26,6 +26,7 @@ describe("gameStateEvaluatorOptionsForClient", () => {
     expect(gameStateEvaluatorOptionsForClient("STABLE")).toEqual({
       hitWindowStyle: "OSU_STABLE",
       noteLockStyle: "STABLE",
+      sliderTailLeniency: 0,
     });
   });
 
@@ -33,6 +34,7 @@ describe("gameStateEvaluatorOptionsForClient", () => {
     expect(gameStateEvaluatorOptionsForClient("LAZER")).toEqual({
       hitWindowStyle: "OSU_LAZER",
       noteLockStyle: "NONE",
+      sliderTailLeniency: -36,
     });
   });
 });

@@ -72,5 +72,7 @@ describe("GameplayInfoEvaluator slider-head accuracy", () => {
 
     expect(result.sliderTickHits).toBe(1);
     expect(result.sliderEndHits).toBe(1);
+    // Tick: 30/30, repeat: 0/30, end: 150/150.
+    expect(result.accuracy).toBeCloseTo(6 / 7);
   });
 });

@@ -140,6 +140,7 @@ export class ScenarioManager {
       addStacking: true,
       mods: replay.mods,
       clockRate: replay.clockRate,
+      replayClient: replay.client,
     });
 
     console.log(`Beatmap built with ${beatmap.hitObjects.length} hitobjects`);

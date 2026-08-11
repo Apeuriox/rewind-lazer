@@ -38,6 +38,8 @@ export interface HitObjectJudgement extends DisplayBase {
 export interface CheckpointJudgement extends DisplayBase {
   type: "CheckpointJudgement";
   hit: boolean;
+  sliderId: string;
+  sliderHeadHit: boolean;
   // Usually not the causing factor of a slider break
   isLastTick?: boolean;
 }
@@ -52,6 +54,9 @@ export type ReplayAnalysisEvent = HitObjectJudgement | CheckpointJudgement | Unn
 // Type predicates
 export const isHitObjectJudgement = (h: ReplayAnalysisEvent): h is HitObjectJudgement =>
   h.type === "HitObjectJudgement";
+
+export const isMissedSliderEndJudgement = (event: ReplayAnalysisEvent): event is CheckpointJudgement =>
+  event.type === "CheckpointJudgement" && event.isLastTick === true && !event.hit && event.sliderHeadHit;
 
 // This is osu!stable style and is also only recommended for offline processing.
 // In the future, where something like online replay streaming is implemented, this implementation will ofc be too slow.
@@ -81,6 +86,8 @@ export function retrieveEvents(
 
   for (const id in gameState.sliderVerdict) {
     const slider = dict[id] as Slider;
+    const sliderHeadVerdict = gameState.hitCircleVerdict[slider.head.id];
+    const sliderHeadHit = sliderHeadVerdict !== undefined && sliderHeadVerdict.type !== "MISS";
 
     // Stable displays an aggregate slider judgement at the tail. Lazer only
     // displays the nested head/tick/end judgements, so emitting this would add
@@ -97,7 +104,15 @@ export function retrieveEvents(
       const hit = checkPointState?.hit ?? false;
 
       const isLastTick = point.type === "LAST_LEGACY_TICK";
-      events.push({ time: slider.endTime, position: point.position, type: "CheckpointJudgement", hit, isLastTick });
+      events.push({
+        time: point.hitTime,
+        position: point.position,
+        type: "CheckpointJudgement",
+        hit,
+        sliderId: slider.id,
+        sliderHeadHit,
+        isLastTick,
+      });
     }
   }
 
