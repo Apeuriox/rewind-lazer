@@ -67,9 +67,9 @@ function createFrontendWindow() {
     return { action: "deny" };
   });
 
-  ipcMain.on("osuFolderChanged", (event, folder: string) => {
+  ipcMain.on("osuFolderChanged", (event, stableFolder: string, lazerFolder: string) => {
     // TODO: frontend.setMenu()
-    Menu.setApplicationMenu(createMenu(folder));
+    Menu.setApplicationMenu(createMenu(stableFolder, lazerFolder));
   });
 
   // In DEV mode we want to utilize hot reloading, therefore we are going to connect to the development server.
@@ -99,7 +99,7 @@ function handleAllWindowClosed() {
 function handleReady() {
   const isDev = isDevelopmentMode();
 
-  Menu.setApplicationMenu(createMenu(null));
+  Menu.setApplicationMenu(createMenu(null, null));
 
   console.log(
     "Booting Electron application with settings: ",
@@ -149,8 +149,9 @@ function handleActivate() {
   app.on("activate", handleActivate);
 })();
 
-function createMenu(osuFolder: string | null) {
-  const osuFolderKnown = !!osuFolder as boolean;
+function createMenu(stableFolder: string | null, lazerFolder: string | null) {
+  const osuFolderKnown = !!stableFolder || !!lazerFolder;
+  const configuredFolder = stableFolder || lazerFolder;
   const isMac = process.platform === "darwin";
 
   const template: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [];
@@ -205,7 +206,7 @@ function createMenu(osuFolder: string | null) {
           enabled: osuFolderKnown,
           click: async () => {
             const { canceled, filePaths } = await dialog.showOpenDialog({
-              defaultPath: join(osuFolder ?? "", "Replays"),
+              defaultPath: stableFolder ? join(stableFolder, "Replays") : lazerFolder ?? "",
               properties: ["openFile"],
               filters: [
                 { name: "osu! Replay", extensions: ["osr"] },
@@ -239,9 +240,9 @@ function createMenu(osuFolder: string | null) {
         },
         { type: "separator" },
         {
-          label: "Open osu! Folder",
+          label: "Open osu! Data Folder",
           click: async () => {
-            if (osuFolder) await shell.openPath(osuFolder);
+            if (configuredFolder) await shell.openPath(configuredFolder);
           },
           enabled: osuFolderKnown,
         },

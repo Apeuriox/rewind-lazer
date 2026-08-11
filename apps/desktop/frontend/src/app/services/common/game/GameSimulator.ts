@@ -98,7 +98,7 @@ export class GameSimulator {
     this.lastState = this.gameplayTimeMachine.gameStateAt(1e9);
     this.currentInfo = defaultGameplayInfo;
     // this.currentState = finalState...
-    this.replayEvents$.next(retrieveEvents(this.lastState, beatmap.hitObjects));
+    this.replayEvents$.next(retrieveEvents(this.lastState, beatmap.hitObjects, replay.client));
     this.judgements = this.replayEvents$.getValue().filter(isHitObjectJudgement);
 
     this.hits = [];

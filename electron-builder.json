@@ -32,6 +32,7 @@
     },
     "package.json"
   ],
+  "asarUnpack": ["node_modules/realm/prebuilds/node/realm.node"],
   "extraResources": [
     {
       "from": "resources/Skins",

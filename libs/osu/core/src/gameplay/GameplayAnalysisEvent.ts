@@ -5,6 +5,7 @@ import { Slider } from "../hitobjects/Slider";
 import { HitCircle } from "../hitobjects/HitCircle";
 import { MainHitObjectVerdict } from "./Verdicts";
 import { OsuHitObject } from "../hitobjects/Types";
+import { ReplayClient } from "../replays/RawReplayData";
 
 /**
  * ReplayAnalysisEvents are point of interests for the user.
@@ -54,7 +55,11 @@ export const isHitObjectJudgement = (h: ReplayAnalysisEvent): h is HitObjectJudg
 
 // This is osu!stable style and is also only recommended for offline processing.
 // In the future, where something like online replay streaming is implemented, this implementation will ofc be too slow.
-export function retrieveEvents(gameState: GameState, hitObjects: OsuHitObject[]) {
+export function retrieveEvents(
+  gameState: GameState,
+  hitObjects: OsuHitObject[],
+  replayClient: ReplayClient = "STABLE",
+) {
   const events: ReplayAnalysisEvent[] = [];
   const dict = normalizeHitObjects(hitObjects);
 
@@ -75,11 +80,16 @@ export function retrieveEvents(gameState: GameState, hitObjects: OsuHitObject[])
   }
 
   for (const id in gameState.sliderVerdict) {
-    const verdict = gameState.sliderVerdict[id];
-    // Slider judgement events
     const slider = dict[id] as Slider;
-    const position = slider.endPosition;
-    events.push({ time: slider.endTime, hitObjectId: id, position, verdict, type: "HitObjectJudgement" });
+
+    // Stable displays an aggregate slider judgement at the tail. Lazer only
+    // displays the nested head/tick/end judgements, so emitting this would add
+    // a bogus 300/100/50/Miss after the slider has already been judged.
+    if (replayClient === "STABLE") {
+      const verdict = gameState.sliderVerdict[id];
+      const position = slider.endPosition;
+      events.push({ time: slider.endTime, hitObjectId: id, position, verdict, type: "HitObjectJudgement" });
+    }
 
     // CheckpointEvents
     for (const point of slider.checkPoints) {

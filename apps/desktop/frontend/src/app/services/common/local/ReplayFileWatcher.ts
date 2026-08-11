@@ -23,7 +23,10 @@ export class ReplayFileWatcher {
     // We could make it cleaner by using .unwatch() and adding new files to watch
     if (this.watcher) {
       void this.watcher.close();
+      this.watcher = undefined;
     }
+
+    if (!folder) return;
 
     const globPattern = folder;
     console.log(`Watching for replays (.osr) in folder: ${folder} with pattern: ${globPattern}`);

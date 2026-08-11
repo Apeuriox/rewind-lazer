@@ -11,21 +11,15 @@ import { AudioEngine } from "../common/audio/AudioEngine";
 import { GameplayClock } from "../common/game/GameplayClock";
 import { GameLoop } from "../common/game/GameLoop";
 import { PixiRendererManager } from "../renderers/PixiRendererManager";
-import { join } from "path";
-import { readFile } from "fs/promises";
-import { BlueprintLocatorService } from "../common/local/BlueprintLocatorService";
-import { OsuFolderService } from "../common/local/OsuFolderService";
 import { BeatmapBackgroundSettingsStore } from "../common/beatmap-background";
 import { TextureManager } from "../textures/TextureManager";
 import { ReplayFileWatcher } from "../common/local/ReplayFileWatcher";
 import { ModSettingsService } from "../analysis/mod-settings";
+import { LocalBeatmapService } from "../common/local/LocalBeatmapService";
+import { Texture } from "pixi.js";
 
 interface Scenario {
   status: "LOADING" | "ERROR" | "DONE" | "INIT";
-}
-
-function localFile(path: string) {
-  return `file://${path}`;
 }
 
 @injectable()
@@ -38,8 +32,7 @@ export class ScenarioManager {
     private readonly gameLoop: GameLoop,
     private readonly gameSimulator: GameSimulator,
     private readonly modSettingsService: ModSettingsService,
-    private readonly blueprintLocatorService: BlueprintLocatorService,
-    private readonly osuFolderService: OsuFolderService,
+    private readonly localBeatmapService: LocalBeatmapService,
     private readonly audioService: AudioService,
     private readonly textureManager: TextureManager,
     private readonly replayService: ReplayService,
@@ -67,6 +60,7 @@ export class ScenarioManager {
     this.renderer.getRenderer()?.clear();
     this.beatmapManager.setBeatmap(Beatmap.EMPTY_BEATMAP);
     this.gameSimulator.clear();
+    this.localBeatmapService.clear();
     this.gameLoop.stopTicker();
     // await this.sceneManager.changeToScene(AnalysisSceneKeys.IDLE);
     this.scenario$.next({ status: "INIT" });
@@ -80,25 +74,24 @@ export class ScenarioManager {
     this.scenario$.next({ status: "LOADING" });
 
     const replay = await this.replayService.retrieveReplay(replayId);
-    const blueprintInfo = await this.blueprintLocatorService.getBlueprintByMD5(replay.beatmapMd5);
-    if (!blueprintInfo) throw Error(`Could not find the blueprint with MD5=${replay.beatmapMd5}`);
+    const localBeatmap = await this.localBeatmapService.findByMD5(replay.beatmapMd5, replay.client);
+    if (!localBeatmap) throw Error(`Could not find a stable or lazer beatmap with MD5=${replay.beatmapMd5}`);
 
-    const absoluteFolderPath = join(this.osuFolderService.songsFolder$.getValue(), blueprintInfo.folderName);
-
-    const rawBlueprint = await readFile(join(absoluteFolderPath, blueprintInfo.osuFileName), "utf-8");
+    const rawBlueprint = localBeatmap.rawBlueprint;
     const blueprint = parseBlueprint(rawBlueprint);
 
     const { metadata } = blueprint.blueprintInfo;
 
     // Load background
+    const backgroundUrl = await localBeatmap.getAssetUrl(metadata.backgroundFile);
     this.beatmapBackgroundSettingsStore.texture$.next(
-      await this.textureManager.loadTexture(localFile(join(absoluteFolderPath, metadata.backgroundFile))),
+      backgroundUrl ? await this.textureManager.loadTexture(backgroundUrl) : Texture.EMPTY,
     );
 
     // Load audio
-    this.audioEngine.setSong(
-      await this.audioService.loadAudio(localFile(join(absoluteFolderPath, metadata.audioFile))),
-    );
+    const audioUrl = await localBeatmap.getAssetUrl(metadata.audioFile);
+    if (!audioUrl) throw Error(`Could not find beatmap audio file '${metadata.audioFile}' in ${localBeatmap.source}`);
+    this.audioEngine.setSong(await this.audioService.loadAudio(audioUrl));
     this.audioEngine.song?.mediaElement.addEventListener("loadedmetadata", () => {
       const duration = (this.audioEngine.song?.mediaElement.duration ?? 0) * 1000;
       this.gameClock.setDuration(duration);

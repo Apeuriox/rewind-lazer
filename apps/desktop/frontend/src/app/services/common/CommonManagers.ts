@@ -17,6 +17,7 @@ import { BlueprintLocatorService } from "./local/BlueprintLocatorService";
 import { BeatmapRenderService } from "./beatmap-render";
 import { STAGE_TYPES } from "../types";
 import { AppInfoService } from "./app-info";
+import { LocalBeatmapService } from "./local/LocalBeatmapService";
 
 /**
  * Creates the services that support all the osu! tools such as the Analyzer.
@@ -59,6 +60,7 @@ export function createRewindTheater({ rewindSkinsFolder, appPlatform, appVersion
   container.bind(OsuFolderService).toSelf();
   container.bind(OsuDBDao).toSelf();
   container.bind(BlueprintLocatorService).toSelf();
+  container.bind(LocalBeatmapService).toSelf();
   container.bind(ReplayService).toSelf();
   container.bind(SkinLoader).toSelf();
   container.bind(SkinHolder).toSelf();

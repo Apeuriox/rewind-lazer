@@ -7,5 +7,8 @@ export default {
     "^.+\\.[tj]sx?$": "babel-jest",
   },
   moduleFileExtensions: ["ts", "tsx", "js", "jsx"],
+  moduleNameMapper: {
+    "^electron$": "<rootDir>/test/electron.mock.ts",
+  },
   coverageDirectory: "../../../coverage/apps/frontend",
 };
