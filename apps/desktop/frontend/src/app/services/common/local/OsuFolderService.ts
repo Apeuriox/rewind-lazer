@@ -25,20 +25,27 @@ export async function osuFolderSanityCheck(osuFolderPath: string) {
   return true;
 }
 
-interface OsuSettings {
+export interface OsuSettings {
   osuStablePath: string;
   osuLazerPath: string;
+  defaultReplayClient: "STABLE" | "LAZER";
 }
 
 export const DEFAULT_OSU_SETTINGS: OsuSettings = Object.freeze({
   osuStablePath: "",
   osuLazerPath: "",
+  defaultReplayClient: "STABLE",
 });
 export const OsuSettingsSchema: JSONSchemaType<OsuSettings> = {
   type: "object",
   properties: {
     osuStablePath: { type: "string", default: DEFAULT_OSU_SETTINGS.osuStablePath },
     osuLazerPath: { type: "string", default: DEFAULT_OSU_SETTINGS.osuLazerPath },
+    defaultReplayClient: {
+      type: "string",
+      enum: ["STABLE", "LAZER"],
+      default: DEFAULT_OSU_SETTINGS.defaultReplayClient,
+    },
   },
   required: [],
 };
@@ -62,7 +69,7 @@ export class OsuFolderService extends PersistentService<OsuSettings> {
 
   async onFolderChange(osuSettings: OsuSettings) {
     const { osuStablePath } = osuSettings;
-    ipcRenderer.send("osuFolderChanged", osuStablePath, osuSettings.osuLazerPath);
+    ipcRenderer.send("osuFolderChanged", osuStablePath, osuSettings.osuLazerPath, osuSettings.defaultReplayClient);
     this.replaysFolder$.next(osuStablePath ? join(osuStablePath, "Replays") : "");
     const userId = await username();
     this.songsFolder$.next(
@@ -86,6 +93,10 @@ export class OsuFolderService extends PersistentService<OsuSettings> {
   setLazerFolder(path: string) {
     console.log(`osu!lazer folder was set to '${path}'`);
     this.changeSettings((draft) => (draft.osuLazerPath = path));
+  }
+
+  setDefaultReplayClient(client: "STABLE" | "LAZER") {
+    this.changeSettings((draft) => (draft.defaultReplayClient = client));
   }
 
   async resolveLazerFolder(path = this.getLazerFolder()): Promise<string | null> {

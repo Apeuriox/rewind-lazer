@@ -5,6 +5,7 @@ import {
   Button,
   FormControlLabel,
   FormGroup,
+  MenuItem,
   Modal,
   Paper,
   Slider,
@@ -221,6 +222,7 @@ function LocalInstallationsSettings() {
   const settings = useObservable(() => analyzer.osuFolderService.settings$, {
     osuStablePath: "",
     osuLazerPath: "",
+    defaultReplayClient: "STABLE" as const,
   });
   const [error, setError] = useState("");
 
@@ -262,6 +264,18 @@ function LocalInstallationsSettings() {
             Browse
           </Button>
         </Stack>
+        <TextField
+          select
+          fullWidth
+          label="Default replay folder"
+          value={settings.defaultReplayClient}
+          onChange={(event) =>
+            analyzer.osuFolderService.setDefaultReplayClient(event.target.value as "STABLE" | "LAZER")
+          }
+        >
+          <MenuItem value="STABLE">osu!stable / Replays</MenuItem>
+          <MenuItem value="LAZER">osu!lazer / exports</MenuItem>
+        </TextField>
         {error && <Typography color="error">{error}</Typography>}
       </Stack>
     </Paper>
