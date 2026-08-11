@@ -7,6 +7,7 @@ import { OsuAction, ReplayFrame } from "../replays/Replay";
 import { MainHitObjectVerdict } from "./Verdicts";
 import { HitCircle } from "../hitobjects/HitCircle";
 import { RELAX_LENIENCY } from "../mods/Mods";
+import { ReplayClient } from "../replays/RawReplayData";
 
 /**
  * In the real osu game, the slider body will be evaluated at every game tick (?), which is something we can not do.
@@ -90,6 +91,17 @@ const defaultOptions: GameStateEvaluatorOptions = {
   noteLockStyle: "STABLE",
   hitWindowStyle: "OSU_STABLE",
 };
+
+export function gameStateEvaluatorOptionsForClient(client: ReplayClient): GameStateEvaluatorOptions {
+  if (client === "LAZER") {
+    return {
+      hitWindowStyle: "OSU_LAZER",
+      noteLockStyle: "NONE",
+    };
+  }
+
+  return { ...defaultOptions };
+}
 
 const HitObjectVerdicts = {
   GREAT: 0,

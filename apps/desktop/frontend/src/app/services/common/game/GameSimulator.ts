@@ -7,6 +7,7 @@ import {
   GameState,
   HitObjectJudgement,
   isHitObjectJudgement,
+  gameStateEvaluatorOptionsForClient,
   ReplayAnalysisEvent,
   retrieveEvents,
 } from "@osujs/core";
@@ -82,11 +83,12 @@ export class GameSimulator {
   calculateHitErrorArray() {}
 
   simulateReplay(beatmap: Beatmap, replay: OsuReplay) {
-    this.gameplayTimeMachine = new BucketedGameStateTimeMachine(replay.frames, beatmap, {
-      hitWindowStyle: "OSU_STABLE",
-      noteLockStyle: "STABLE",
-    });
-    this.gameplayEvaluator = new GameplayInfoEvaluator(beatmap, {});
+    this.gameplayTimeMachine = new BucketedGameStateTimeMachine(
+      replay.frames,
+      beatmap,
+      gameStateEvaluatorOptionsForClient(replay.client),
+    );
+    this.gameplayEvaluator = new GameplayInfoEvaluator(beatmap, { replayClient: replay.client });
     // TODO: Move this to async ...
     this.lastState = this.gameplayTimeMachine.gameStateAt(1e9);
     this.currentInfo = defaultGameplayInfo;

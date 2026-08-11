@@ -9,6 +9,7 @@ import { Beatmap } from "../beatmap/Beatmap";
 import { HitCircle } from "../hitobjects/HitCircle";
 import { Slider } from "../hitobjects/Slider";
 import { SliderCheckPoint } from "../hitobjects/SliderCheckPoint";
+import { ReplayClient } from "../replays/RawReplayData";
 
 export interface GameplayInfo {
   accuracy: number;
@@ -84,6 +85,7 @@ export function osuStableAccuracy(count: number[]): number | undefined {
 
 interface EvaluationOption {
   scoringSystem: "ScoreV1" | "ScoreV2";
+  replayClient: ReplayClient;
   // maybe beatmap difficulty -> since they are required for score v1 calc
 }
 
@@ -91,6 +93,7 @@ interface EvaluationOption {
 
 const defaultEvaluationOptions = {
   scoringSystem: "ScoreV1",
+  replayClient: "STABLE",
 } as EvaluationOption;
 
 type StableVerdictCount = Record<MainHitObjectVerdict, number>;
@@ -124,7 +127,8 @@ export class GameplayInfoEvaluator {
 
   evaluateHitObject(hitObjectType: HitObjectType, verdict: MainHitObjectVerdict, isSliderHead?: boolean) {
     this.comboInfo = updateComboInfo(this.comboInfo, hitObjectType, verdict !== "MISS");
-    if (!isSliderHead) {
+    const affectsAccuracy = this.options.replayClient === "LAZER" ? hitObjectType !== "SLIDER" : !isSliderHead;
+    if (affectsAccuracy) {
       this.verdictCount[verdict] += 1;
     }
   }

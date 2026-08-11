@@ -1,4 +1,4 @@
-import { modsFromBitmask, parseReplayFramesFromRaw } from "@osujs/core";
+import { modsFromBitmask, parseReplayFramesFromRaw, replayClientFromVersion } from "@osujs/core";
 import { injectable } from "inversify";
 import { OsuReplay } from "../../../model/OsuReplay";
 import { ipcRenderer } from "electron";
@@ -14,6 +14,7 @@ export class ReplayService {
     const res = await ipcRenderer.invoke("readOsr", filePath);
     return {
       gameVersion: res.gameVersion,
+      client: replayClientFromVersion(res.gameVersion),
       frames: parseReplayFramesFromRaw(res.replay_data),
       mods: modsFromBitmask(res.mods),
       md5hash: res.replayMD5,
