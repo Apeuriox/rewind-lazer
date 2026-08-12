@@ -193,7 +193,9 @@ function highPrecisionAudioTooltip(state: HighPrecisionAudioState) {
     case "AVAILABLE":
       return "Decode the MP3 to a temporary WAV for more accurate seeking. Uses extra memory and may take a moment.";
     case "ACTIVE":
-      return "High-precision audio is on. Select to restore the original MP3 and release memory.";
+      return state.automatic
+        ? "High-precision audio was enabled automatically because this MP3 may seek inaccurately. Select to use the original MP3."
+        : "High-precision audio is on. Select to restore the original MP3 and release memory.";
     case "CONVERTING":
       return "Creating temporary WAV audio…";
     case "ERROR":
@@ -205,7 +207,7 @@ function highPrecisionAudioTooltip(state: HighPrecisionAudioState) {
         case "NOT_MP3":
           return "High-precision mode is only needed for MP3 audio.";
         case "TOO_LONG":
-          return "Unavailable for tracks over 10 minutes to avoid excessive memory usage.";
+          return "Unavailable for tracks over 15 minutes to avoid excessive memory usage.";
         case "NO_REPLAY":
           return "Load a replay to use high-precision audio.";
       }
@@ -221,7 +223,9 @@ function HighPrecisionAudioButton() {
   const statusAnnouncement = converting
     ? "Creating temporary WAV audio."
     : active
-    ? "High-precision audio enabled."
+    ? state.automatic
+      ? "High-precision audio enabled automatically."
+      : "High-precision audio enabled."
     : state.status === "ERROR"
     ? "Unable to create high-precision audio."
     : "";

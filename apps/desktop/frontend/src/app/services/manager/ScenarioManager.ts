@@ -2,7 +2,12 @@ import { injectable } from "inversify";
 import { BehaviorSubject } from "rxjs";
 import { Beatmap, buildBeatmap, modsToBitmask, parseBlueprint } from "@osujs/core";
 import { GameSimulator } from "../common/game/GameSimulator";
-import { AudioService, highPrecisionAudioUnavailableReason } from "../common/audio/AudioService";
+import {
+  AUTO_HIGH_PRECISION_AUDIO_MAX_DURATION_MS,
+  AudioService,
+  highPrecisionAudioUnavailableReason,
+  inspectMp3SeekRisk,
+} from "../common/audio/AudioService";
 import { ReplayService } from "../common/local/ReplayService";
 import { BeatmapManager } from "./BeatmapManager";
 import { ReplayManager } from "./ReplayManager";
@@ -26,7 +31,7 @@ export type HighPrecisionAudioState =
   | { status: "UNAVAILABLE"; reason: "NO_REPLAY" | "LOADING" | "NOT_MP3" | "TOO_LONG" }
   | { status: "AVAILABLE" }
   | { status: "CONVERTING" }
-  | { status: "ACTIVE" }
+  | { status: "ACTIVE"; automatic: boolean }
   | { status: "ERROR" };
 
 interface CurrentAudioSource {
@@ -116,23 +121,52 @@ export class ScenarioManager {
     // Load audio
     const audioUrl = await localBeatmap.getAssetUrl(metadata.audioFile);
     if (!audioUrl) throw Error(`Could not find beatmap audio file '${metadata.audioFile}' in ${localBeatmap.source}`);
-    const audio = await this.audioService.loadAudio(audioUrl, metadata.audioFile);
-    this.audioEngine.setSong(audio);
-    const duration = audio.duration * 1000;
+    let audio = await this.audioService.loadAudio(audioUrl, metadata.audioFile);
+    let duration = audio.duration * 1000;
+    let highPrecisionState: HighPrecisionAudioState;
     this.gameClock.setDuration(duration);
-    this.gameSimulator.calculateDifficulties(rawBlueprint, duration, modsToBitmask(replay.mods));
 
     const unavailableReason = highPrecisionAudioUnavailableReason(metadata.audioFile, duration);
     if (unavailableReason) {
-      this.highPrecisionAudioState$.next({ status: "UNAVAILABLE", reason: unavailableReason });
+      highPrecisionState = { status: "UNAVAILABLE", reason: unavailableReason };
     } else {
       this.currentAudioSource = {
         filename: metadata.audioFile,
         originalUrl: audioUrl,
         loadData: () => localBeatmap.getAssetData(metadata.audioFile),
       };
-      this.highPrecisionAudioState$.next({ status: "AVAILABLE" });
+      highPrecisionState = { status: "AVAILABLE" };
+
+      if (duration <= AUTO_HIGH_PRECISION_AUDIO_MAX_DURATION_MS) {
+        const audioData = await this.currentAudioSource.loadData();
+        if (audioData) {
+          const seekRisk = inspectMp3SeekRisk(audioData);
+          console.log(
+            `MP3 seek header: ${seekRisk.header}; high-precision audio required: ${seekRisk.requiresHighPrecision}`,
+          );
+          if (seekRisk.requiresHighPrecision) {
+            this.highPrecisionAudioState$.next({ status: "CONVERTING" });
+            try {
+              const originalAudio = audio;
+              audio = await this.audioService.loadAudio(audioData, metadata.audioFile, true);
+              originalAudio.pause();
+              originalAudio.removeAttribute("src");
+              originalAudio.load();
+              duration = audio.duration * 1000;
+              highPrecisionState = { status: "ACTIVE", automatic: true };
+            } catch (error) {
+              console.error("Could not automatically enable high-precision audio", error);
+              highPrecisionState = { status: "ERROR" };
+            }
+          }
+        }
+      }
     }
+
+    this.audioEngine.setSong(audio);
+    this.gameClock.setDuration(duration);
+    this.gameSimulator.calculateDifficulties(rawBlueprint, duration, modsToBitmask(replay.mods));
+    this.highPrecisionAudioState$.next(highPrecisionState);
 
     // If the building is too slow or unbearable, we should push the building to a WebWorker, but right now it's ok
     // even on long maps.
@@ -189,7 +223,9 @@ export class ScenarioManager {
         audio = await this.audioService.loadAudio(source.originalUrl, source.filename);
       }
       this.installReplacementAudio(audio, currentTime, wasPlaying);
-      this.highPrecisionAudioState$.next({ status: enableHighPrecision ? "ACTIVE" : "AVAILABLE" });
+      this.highPrecisionAudioState$.next(
+        enableHighPrecision ? { status: "ACTIVE", automatic: false } : { status: "AVAILABLE" },
+      );
     } catch (error) {
       console.error("Could not switch high-precision audio", error);
       try {
