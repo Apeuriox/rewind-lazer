@@ -14,10 +14,10 @@ export function HomeScreen() {
       <Stack alignItems={"center"}>
         <FastRewind sx={{ height: "2em", width: "2em" }} />
         <Typography fontSize={"1em"} sx={{ userSelect: "none", marginBottom: 2 }}>
-          REWIND
+          REWIND LAZER
         </Typography>
         <Typography fontSize={"caption.fontSize"} color={"text.secondary"}>
-          Rewind {appVersion} by{" "}
+          Rewind Lazer {appVersion}, based on Rewind by{" "}
           <Link href={RewindLinks.OsuPpyShAbstrakt} target={"_blank"} color={"text.secondary"}>
             abstrakt
           </Link>

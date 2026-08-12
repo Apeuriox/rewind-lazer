@@ -5,6 +5,7 @@ import { Close } from "@mui/icons-material";
 import React from "react";
 import { frontendAPI } from "../../api";
 import { useAppInfo } from "../../hooks/app-info";
+import { RewindLazerRepository } from "../../utils/constants";
 
 const units = ["bytes", "KB", "MB", "GB", "TB", "PB"];
 
@@ -18,10 +19,8 @@ function niceBytes(x: any) {
 }
 
 function versionUrl(version: string) {
-  const repoOwner = "abstrakt8";
-  const repoName = "rewind";
   // The version does not contain "v"
-  return `https://github.com/${repoOwner}/${repoName}/releases/v${version}`;
+  return `${RewindLazerRepository.url}/releases/tag/v${version}`;
 }
 
 export function UpdateModal() {
@@ -62,7 +61,7 @@ export function UpdateModal() {
             {updateAvailable && (
               <Stack gap={2}>
                 <Typography>
-                  New Rewind version available:{" "}
+                  New Rewind Lazer version available:{" "}
                   <Link href={versionUrl(newVersion)} target={"_blank"} color={"text.secondary"}>
                     {newVersion}
                   </Link>

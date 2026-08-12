@@ -3,7 +3,12 @@
   "version": "0.1.2",
   "private": true,
   "license": "MIT",
-  "author": "abstrakt",
+  "author": "Rewind Lazer contributors",
+  "description": "A Rewind fork with osu!lazer replay support.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Apeuriox/rewind.git"
+  },
   "main": "index.js",
   "scripts": {
     "affected": "nx affected",
@@ -17,7 +22,7 @@
     "build": "yarn run desktop:build:prod",
     "build-storybook": "build-storybook",
     "dep-graph": "nx dep-graph",
-    "desktop:build:prod": "nx run-many --skip-nx-cache --target=build --projects=desktop-frontend,desktop-main --prod && electron-builder",
+    "desktop:build:prod": "nx build desktop-main --configuration=production --skip-nx-cache && nx build desktop-frontend --configuration=production --skip-nx-cache && electron-builder",
     "desktop-frontend:dev": "nx run desktop-frontend:serve",
     "desktop-main:serve": "electron dist/apps/desktop/index.js",
     "desktop-main:dev": "nx run desktop-main:build && yarn run desktop-main:serve",
@@ -53,7 +58,6 @@
     "core-js": "^3.17.2",
     "electron-log": "^4.4.1",
     "electron-store": "^8.0.1",
-    "electron-updater": "^4.6.1",
     "history": "^5.2.0",
     "immer": "^9.0.6",
     "inversify": "^6.2.1",
