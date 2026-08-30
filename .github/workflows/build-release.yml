@@ -1,34 +1,106 @@
-name: Build/release v2
+name: Build
 
 on:
   push:
+    branches:
+      - dev
+      - main
+      - master
+    tags:
+      - "v*"
+  pull_request:
   workflow_dispatch:
 
-jobs:
-  release:
-    runs-on: ${{ matrix.os }}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
+env:
+  CI: true
+  HUSKY: "0"
+  NX_DAEMON: "false"
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+  ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
     strategy:
+      fail-fast: false
       matrix:
-        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        include:
+          - name: Windows
+            os: windows-latest
+          - name: Linux
+            os: ubuntu-22.04
 
     steps:
-      - name: Checkout code
-        uses: nschloe/action-cached-lfs-checkout@v1
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
 
-      - name: Install Node.js, NPM and Yarn
-        uses: actions/setup-node@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: yarn
 
-      - name: Build/release Electron app
-        uses: Yan-Jobs/action-electron-builder@v1.7.0
+      - name: Cache electron-builder
+        uses: actions/cache@v4
         with:
-          # GitHub token, automatically provided to the action
-          # (No need to define this secret in the repo settings)
-          github_token: ${{ secrets.github_token }}
+          path: |
+            ${{ env.ELECTRON_CACHE }}
+            ${{ env.ELECTRON_BUILDER_CACHE }}
+          key: electron-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+          restore-keys: |
+            electron-${{ runner.os }}-
 
-          # If the commit is tagged with a version (e.g. "v1.0.0"),
-          # release the app after building
-          release: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --network-timeout 600000
+
+      - name: Build and package
+        run: yarn desktop:build:prod -- --publish never
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rewind-lazer-${{ matrix.name }}
+          path: |
+            dist/electron/*.exe
+            dist/electron/*.exe.blockmap
+            dist/electron/*.AppImage
+            dist/electron/*.deb
+            dist/electron/*.rpm
+            dist/electron/*.snap
+            dist/electron/*.tar.gz
+            dist/electron/*.zip
+            dist/electron/*.yml
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: GitHub Release
+    needs: build
+    if: github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: artifacts/*
