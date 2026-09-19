@@ -177,4 +177,17 @@ describe("buildBeatmap difficulty adjust", () => {
     expect(beatmap.difficulty.overallDifficulty).toEqual(2.5);
     expect(beatmap.difficulty.drainRate).toEqual(2.5);
   });
+
+  it("keeps the blueprint difficulty as the original values", () => {
+    const beatmap = buildBeatmap(sliderBlueprint, {
+      addStacking: false,
+      mods: ["HARD_ROCK"],
+      difficultyAdjust: { approachRate: 11 },
+    });
+
+    expect(beatmap.originalDifficulty).toEqual(sliderBlueprint.defaultDifficulty);
+    expect(beatmap.difficultyAdjust).toEqual({ approachRate: 11 });
+    expect(beatmap.difficulty.approachRate).toEqual(11);
+    expect(beatmap.difficulty.circleSize).toBeCloseTo(5.2);
+  });
 });

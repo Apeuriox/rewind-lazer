@@ -1,6 +1,6 @@
 import { injectable } from "inversify";
 import { GameSimulator } from "../../../common/game/GameSimulator";
-import { Container, Text } from "pixi.js";
+import { Container, Text, TextStyle } from "pixi.js";
 import {
   calculateDigits,
   OsuClassicAccuracy,
@@ -9,6 +9,7 @@ import {
 } from "@rewind/osu-pixi/classic-components";
 import { STAGE_HEIGHT, STAGE_WIDTH } from "../../constants";
 import { formatGameTime, hitWindowsForOD } from "@osujs/math";
+import { difficultyHudLines } from "@osujs/core";
 import { GameplayClock } from "../../../common/game/GameplayClock";
 import { BeatmapManager } from "../../../manager/BeatmapManager";
 import { mean, standardDeviation } from "simple-statistics";
@@ -17,6 +18,10 @@ import { SkinHolder } from "../../../common/skin";
 
 const LAZER_REPLAY_LABEL_VISIBLE_MS = 5_000;
 const LAZER_REPLAY_LABEL_FADE_MS = 500;
+const HUD_TEXT_COLOR = 0xeeeeee;
+const INCREASED_DIFFICULTY_COLOR = 0xffbce2;
+const DECREASED_DIFFICULTY_COLOR = 0xe3faff;
+const HUD_LINE_HEIGHT = 20;
 
 function calculateUnstableRate(x: number[]) {
   return x.length === 0 ? 0 : standardDeviation(x) * 10;
@@ -30,6 +35,7 @@ function calculateMean(x: number[]) {
 export class ForegroundHUDPreparer {
   container: Container;
   stats: Text;
+  difficultyLines: Text[];
   replayTypeLabel: Text;
   hitErrorBar: OsuClassicHitErrorBar;
 
@@ -48,7 +54,11 @@ export class ForegroundHUDPreparer {
     private readonly hitErrorBarSettingsStore: HitErrorBarSettingsStore,
   ) {
     this.container = new Container();
-    this.stats = new Text("", { fontSize: 16, fill: 0xeeeeee, fontFamily: "Arial", align: "left" });
+    this.stats = new Text("", { fontSize: 16, fill: HUD_TEXT_COLOR, fontFamily: "Arial", align: "left" });
+    this.difficultyLines = Array.from(
+      { length: 5 },
+      () => new Text("", new TextStyle({ fontSize: 16, fontFamily: "Arial", align: "left", fill: HUD_TEXT_COLOR })),
+    );
     this.replayTypeLabel = new Text("Lazer Replay", {
       fontSize: 16,
       fontWeight: "600",
@@ -213,6 +223,23 @@ Mean: ${localMean.toFixed(digits)}ms
 
       this.stats.position.set(25, 50);
       this.container.addChild(this.stats);
+      this.updateDifficultyStats(25, 50 + this.stats.height);
     }
+  }
+
+  private updateDifficultyStats(x: number, y: number) {
+    const lines = difficultyHudLines(this.beatmapManager.getBeatmap());
+    lines.forEach((line, index) => {
+      const text = this.difficultyLines[index];
+      text.text = line.text;
+      text.style.fill =
+        line.change === "up"
+          ? INCREASED_DIFFICULTY_COLOR
+          : line.change === "down"
+          ? DECREASED_DIFFICULTY_COLOR
+          : HUD_TEXT_COLOR;
+      text.position.set(x, y + index * HUD_LINE_HEIGHT);
+      this.container.addChild(text);
+    });
   }
 }

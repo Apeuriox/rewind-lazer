@@ -234,5 +234,13 @@ export function buildBeatmap(bluePrint: Blueprint, options?: Partial<BeatmapBuil
     modifyStackingPosition(hitObjects, stackLeniency, beatmapVersion);
   }
 
-  return new Beatmap(hitObjects, finalDifficulty, mods, bluePrint.controlPointInfo, clockRate);
+  return new Beatmap(
+    hitObjects,
+    finalDifficulty,
+    mods,
+    bluePrint.controlPointInfo,
+    clockRate,
+    bluePrint.defaultDifficulty,
+    difficultyAdjust,
+  );
 }
