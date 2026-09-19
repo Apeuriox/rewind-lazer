@@ -1,6 +1,20 @@
 import { injectable } from "inversify";
 import { BehaviorSubject } from "rxjs";
-import { Beatmap, buildBeatmap, modsToBitmask, parseBlueprint } from "@osujs/core";
+import {
+  Beatmap,
+  Blueprint,
+  buildBeatmap,
+  DifficultyAdjustSettings,
+  modsToBitmask,
+  parseBlueprint,
+} from "@osujs/core";
+import { OsuReplay } from "../../model/OsuReplay";
+import {
+  clampDifficultySliderValue,
+  difficultyRequiresExtendedLimits,
+  DifficultySliderDimension,
+  ViewerDifficultyFields,
+} from "../../utils/difficulty-slider";
 import { GameSimulator } from "../common/game/GameSimulator";
 import {
   AUTO_HIGH_PRECISION_AUDIO_MAX_DURATION_MS,
@@ -40,11 +54,18 @@ interface CurrentAudioSource {
   loadData: () => Promise<ArrayBuffer | undefined>;
 }
 
+const DEFAULT_VIEWER_DIFFICULTY: ViewerDifficultyFields = { extendedLimits: false };
+
 @injectable()
 export class ScenarioManager {
   public scenario$: BehaviorSubject<Scenario>;
   public highPrecisionAudioState$: BehaviorSubject<HighPrecisionAudioState>;
+  public viewerDifficulty$: BehaviorSubject<ViewerDifficultyFields>;
   private currentAudioSource?: CurrentAudioSource;
+  private loadedBlueprint?: Blueprint;
+  private rebuildTimer?: ReturnType<typeof setTimeout>;
+  private rebuilding = false;
+  private rebuildQueued = false;
 
   constructor(
     private readonly gameClock: GameplayClock,
@@ -68,6 +89,7 @@ export class ScenarioManager {
       status: "UNAVAILABLE",
       reason: "NO_REPLAY",
     });
+    this.viewerDifficulty$ = new BehaviorSubject<ViewerDifficultyFields>(DEFAULT_VIEWER_DIFFICULTY);
   }
 
   public initialize() {
@@ -88,6 +110,8 @@ export class ScenarioManager {
     this.beatmapManager.setBeatmap(Beatmap.EMPTY_BEATMAP);
     this.gameSimulator.clear();
     this.localBeatmapService.clear();
+    this.loadedBlueprint = undefined;
+    this.viewerDifficulty$.next(DEFAULT_VIEWER_DIFFICULTY);
     this.gameLoop.stopTicker();
     // await this.sceneManager.changeToScene(AnalysisSceneKeys.IDLE);
     this.scenario$.next({ status: "INIT" });
@@ -109,6 +133,8 @@ export class ScenarioManager {
 
     const rawBlueprint = localBeatmap.rawBlueprint;
     const blueprint = parseBlueprint(rawBlueprint);
+    this.loadedBlueprint = blueprint;
+    this.viewerDifficulty$.next(DEFAULT_VIEWER_DIFFICULTY);
 
     const { metadata } = blueprint.blueprintInfo;
 
@@ -193,6 +219,16 @@ export class ScenarioManager {
     this.gameClock.seekTo(0);
     this.beatmapManager.setBeatmap(beatmap);
     this.replayManager.setMainReplay(replay);
+    this.viewerDifficulty$.next({
+      extendedLimits: difficultyRequiresExtendedLimits(
+        replay.difficultyAdjust?.approachRate,
+        replay.difficultyAdjust?.overallDifficulty,
+        replay.difficultyAdjust?.circleSize,
+        beatmap.difficulty.approachRate,
+        beatmap.difficulty.overallDifficulty,
+        beatmap.difficulty.circleSize,
+      ),
+    });
 
     await this.gameSimulator.simulateReplay(beatmap, replay);
     await this.sceneManager.changeToScene(AnalysisSceneKeys.ANALYSIS);
@@ -245,6 +281,100 @@ export class ScenarioManager {
     this.audioEngine.changePlaybackRate(this.gameClock.speed);
     this.gameClock.seekTo(timeInMs);
     if (resume) this.gameClock.start();
+  }
+
+  setViewerDifficultyValue(dimension: DifficultySliderDimension, value: number) {
+    const extended = this.viewerDifficulty$.value.extendedLimits;
+    const nextValue = clampDifficultySliderValue(dimension, value, extended);
+    this.viewerDifficulty$.next({
+      ...this.viewerDifficulty$.value,
+      [dimension]: nextValue,
+    });
+    this.scheduleBeatmapRebuild();
+  }
+
+  setViewerExtendedLimits(extendedLimits: boolean) {
+    const beatmap = this.beatmapManager.getBeatmap();
+    const current = this.viewerDifficulty$.value;
+    const next: ViewerDifficultyFields = { ...current, extendedLimits };
+    let needsRebuild = false;
+
+    (["approachRate", "overallDifficulty", "circleSize"] as DifficultySliderDimension[]).forEach((dimension) => {
+      const fallback =
+        dimension === "approachRate"
+          ? beatmap.difficulty.approachRate
+          : dimension === "overallDifficulty"
+          ? beatmap.difficulty.overallDifficulty
+          : beatmap.difficulty.circleSize;
+      const value = current[dimension] ?? fallback;
+      const clamped = clampDifficultySliderValue(dimension, value, extendedLimits);
+      if (clamped !== value) {
+        next[dimension] = clamped;
+        needsRebuild = true;
+      }
+    });
+
+    this.viewerDifficulty$.next(next);
+    if (needsRebuild) this.rebuildBeatmapForViewer();
+  }
+
+  private mergedDifficultyAdjust(replay: OsuReplay): DifficultyAdjustSettings | undefined {
+    const viewer = this.viewerDifficulty$.value;
+    const merged: DifficultyAdjustSettings = { ...replay.difficultyAdjust };
+    if (viewer.approachRate !== undefined) merged.approachRate = viewer.approachRate;
+    if (viewer.overallDifficulty !== undefined) merged.overallDifficulty = viewer.overallDifficulty;
+    if (viewer.circleSize !== undefined) merged.circleSize = viewer.circleSize;
+    if (
+      merged.approachRate === undefined &&
+      merged.overallDifficulty === undefined &&
+      merged.circleSize === undefined &&
+      merged.drainRate === undefined
+    ) {
+      return undefined;
+    }
+    return merged;
+  }
+
+  private scheduleBeatmapRebuild() {
+    if (this.rebuildTimer) clearTimeout(this.rebuildTimer);
+    this.rebuildTimer = setTimeout(() => {
+      this.rebuildTimer = undefined;
+      void this.rebuildBeatmapForViewer();
+    }, 50);
+  }
+
+  private async rebuildBeatmapForViewer() {
+    if (this.rebuilding) {
+      this.rebuildQueued = true;
+      return;
+    }
+    this.rebuilding = true;
+    try {
+      do {
+        this.rebuildQueued = false;
+        const blueprint = this.loadedBlueprint;
+        const replay = this.replayManager.getMainReplay();
+        if (!blueprint || !replay) return;
+
+        const wasPlaying = this.gameClock.isPlaying;
+        const time = this.gameClock.timeElapsedInMs;
+        if (wasPlaying) this.gameClock.pause();
+
+        const beatmap = buildBeatmap(blueprint, {
+          addStacking: true,
+          mods: replay.mods,
+          clockRate: replay.clockRate,
+          difficultyAdjust: this.mergedDifficultyAdjust(replay),
+          replayClient: replay.client,
+        });
+        this.beatmapManager.setBeatmap(beatmap);
+        this.gameSimulator.simulateReplay(beatmap, replay);
+        this.gameClock.seekTo(time);
+        if (wasPlaying) this.gameClock.start();
+      } while (this.rebuildQueued);
+    } finally {
+      this.rebuilding = false;
+    }
   }
 
   // This is just the NM view of a beatmap

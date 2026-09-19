@@ -20,6 +20,7 @@ import {
   PhotoCamera,
   PlayCircle,
   Settings,
+  Tune,
   VolumeOff,
   VolumeUp,
 } from "@mui/icons-material";
@@ -33,6 +34,8 @@ import { useModControls } from "../../hooks/mods";
 import modHiddenImg from "../../../assets/mod_hidden.png";
 import { formatPlaybackSpeed, PlaybarColors } from "../../utils/constants";
 import { BasePlaybackSpeedPanel } from "./BasePlaybackSpeedPanel";
+import { BaseDifficultyAdjustPanel } from "./BaseDifficultyAdjustPanel";
+import { useDifficultyAdjustControls } from "../../hooks/difficulty-adjust";
 
 import { useSettingsModalContext } from "../../providers/SettingsProvider";
 import { ReplayAnalysisEvent, ReplayClient } from "@osujs/core";
@@ -486,6 +489,60 @@ function SpeedButton() {
   );
 }
 
+function DifficultyButton() {
+  const { beatmap, viewer, disabled, setDimension, setExtendedLimits } = useDifficultyAdjustControls();
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const open = Boolean(anchorEl);
+  const dirty =
+    viewer.approachRate !== undefined || viewer.overallDifficulty !== undefined || viewer.circleSize !== undefined;
+
+  const handleClick = (event: MouseEvent<HTMLElement>) => {
+    setAnchorEl(open ? null : event.currentTarget);
+  };
+
+  return (
+    <>
+      <IconButton
+        aria-label="Adjust AR, OD, and CS"
+        aria-haspopup="true"
+        aria-expanded={open}
+        onClick={handleClick}
+        onFocus={ignoreFocus}
+        sx={{
+          color: dirty ? "primary.main" : "text.primary",
+          transitionProperty: "color, transform",
+          transitionDuration: "120ms",
+          "&:active": { transform: "scale(0.96)" },
+        }}
+      >
+        <Tune />
+      </IconButton>
+      <Popover
+        open={open}
+        onClose={() => setAnchorEl(null)}
+        anchorEl={anchorEl}
+        PaperProps={{ sx: { overflow: "visible" } }}
+        anchorOrigin={{
+          vertical: "top",
+          horizontal: "center",
+        }}
+        transformOrigin={{
+          vertical: "bottom",
+          horizontal: "center",
+        }}
+      >
+        <BaseDifficultyAdjustPanel
+          beatmap={beatmap}
+          viewer={viewer}
+          disabled={disabled}
+          onChange={setDimension}
+          onExtendedLimitsChange={setExtendedLimits}
+        />
+      </Popover>
+    </>
+  );
+}
+
 function RecordButton() {
   // TODO: Probably stop at a certain time otherwise the program might crash due to memory issue
   const { clipRecorder } = useAnalysisApp();
@@ -530,6 +587,7 @@ export function PlayBar() {
       <Stack direction={"row"} alignItems={"center"} justifyContent={"center"}>
         <AudioButton />
         <SpeedButton />
+        <DifficultyButton />
         <HiddenButton />
         {/*<RecordButton />*/}
         <SettingsButton />
