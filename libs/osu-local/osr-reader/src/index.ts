@@ -18,9 +18,21 @@ export interface LazerReplayMod {
   acronym: string;
   settings?: {
     speed_change?: number;
+    circle_size?: number;
+    approach_rate?: number;
+    overall_difficulty?: number;
+    drain_rate?: number;
+    extended_limits?: boolean;
     [key: string]: unknown;
   };
 }
+
+export type DifficultyAdjustSettings = {
+  circleSize?: number;
+  approachRate?: number;
+  overallDifficulty?: number;
+  drainRate?: number;
+};
 
 export interface LazerReplayScoreInfo {
   client_version?: string;
@@ -31,6 +43,7 @@ export interface LazerReplayScoreInfo {
 export interface ExtendedOsrReplay extends OsrReplay {
   lazerScoreInfo?: LazerReplayScoreInfo;
   clockRate?: number;
+  difficultyAdjust?: DifficultyAdjustSettings;
 }
 
 class ReplayBufferReader {
@@ -112,6 +125,38 @@ export function clockRateFromScoreInfo(scoreInfo: LazerReplayScoreInfo): number 
   return undefined;
 }
 
+function readOptionalFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** Reads lazer Difficulty Adjust (DA) overrides. Unspecified fields stay at the beatmap values. */
+export function difficultyAdjustFromScoreInfo(scoreInfo: LazerReplayScoreInfo): DifficultyAdjustSettings | undefined {
+  const mod = (scoreInfo.mods ?? []).find((m) => m.acronym === "DA");
+  if (!mod) return undefined;
+
+  const settings = mod.settings ?? {};
+  const circleSize = readOptionalFiniteNumber(settings.circle_size);
+  const approachRate = readOptionalFiniteNumber(settings.approach_rate);
+  const overallDifficulty = readOptionalFiniteNumber(settings.overall_difficulty);
+  const drainRate = readOptionalFiniteNumber(settings.drain_rate);
+
+  if (
+    circleSize === undefined &&
+    approachRate === undefined &&
+    overallDifficulty === undefined &&
+    drainRate === undefined
+  ) {
+    return undefined;
+  }
+
+  return {
+    ...(circleSize !== undefined ? { circleSize } : {}),
+    ...(approachRate !== undefined ? { approachRate } : {}),
+    ...(overallDifficulty !== undefined ? { overallDifficulty } : {}),
+    ...(drainRate !== undefined ? { drainRate } : {}),
+  };
+}
+
 export async function parseLazerScoreInfo(buffer: Buffer): Promise<LazerReplayScoreInfo | undefined> {
   const reader = new ReplayBufferReader(buffer);
 
@@ -147,6 +192,7 @@ export async function readExtendedReplay(input: string | Buffer): Promise<Extend
   if (scoreInfo) {
     replay.lazerScoreInfo = scoreInfo;
     replay.clockRate = clockRateFromScoreInfo(scoreInfo);
+    replay.difficultyAdjust = difficultyAdjustFromScoreInfo(scoreInfo);
   }
 
   return replay;

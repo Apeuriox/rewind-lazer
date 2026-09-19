@@ -174,6 +174,7 @@ export class ScenarioManager {
       addStacking: true,
       mods: replay.mods,
       clockRate: replay.clockRate,
+      difficultyAdjust: replay.difficultyAdjust,
       replayClient: replay.client,
     });
 

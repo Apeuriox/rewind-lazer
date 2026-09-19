@@ -6,6 +6,7 @@ export * from "./beatmap/ControlPoints/ControlPoint";
 export * from "./beatmap/ControlPoints/ControlPointGroup";
 export * from "./beatmap/ControlPoints/DifficultyControlPoint";
 export * from "./beatmap/ControlPoints/TimingControlPoint";
+export * from "./mods/DifficultyAdjustMod";
 export * from "./mods/HardRockMod";
 export * from "./mods/HiddenMod";
 export * from "./mods/Mods";

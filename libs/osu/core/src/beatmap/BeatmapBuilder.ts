@@ -4,6 +4,7 @@ import { HitCircleSettings, HitObjectSettings, SliderSettings, SpinnerSettings }
 import { ControlPointInfo } from "./ControlPoints/ControlPointInfo";
 import { HitCircle } from "../hitobjects/HitCircle";
 import { BeatmapDifficultyAdjuster, ModSettings, OsuClassicMod } from "../mods/Mods";
+import { DifficultyAdjustMod, DifficultyAdjustSettings } from "../mods/DifficultyAdjustMod";
 import { modifyStackingPosition } from "../mods/StackingMod";
 import { generateSliderCheckpoints } from "../hitobjects/slider/SliderCheckPointGenerator";
 import { SliderCheckPointDescriptor } from "../hitobjects/slider/SliderCheckPointDescriptor";
@@ -188,6 +189,7 @@ interface BeatmapBuilderOptions {
   mods: OsuClassicMod[];
   clockRate?: number;
   replayClient: ReplayClient;
+  difficultyAdjust?: DifficultyAdjustSettings;
 }
 
 const defaultBeatmapBuilderOptions: BeatmapBuilderOptions = {
@@ -208,9 +210,15 @@ const defaultBeatmapBuilderOptions: BeatmapBuilderOptions = {
  */
 export function buildBeatmap(bluePrint: Blueprint, options?: Partial<BeatmapBuilderOptions>): Beatmap {
   const { beatmapVersion, stackLeniency } = bluePrint.blueprintInfo;
-  const { mods, addStacking, clockRate, replayClient } = { ...defaultBeatmapBuilderOptions, ...options };
+  const { mods, addStacking, clockRate, replayClient, difficultyAdjust } = {
+    ...defaultBeatmapBuilderOptions,
+    ...options,
+  };
 
-  const finalDifficulty = findDifficultyApplier(mods)(bluePrint.defaultDifficulty);
+  const finalDifficulty = DifficultyAdjustMod.apply(
+    findDifficultyApplier(mods)(bluePrint.defaultDifficulty),
+    difficultyAdjust,
+  );
 
   const hitObjects: OsuHitObject[] = bluePrint.hitObjectSettings.map((setting, index) =>
     createStaticHitObject(index, setting, bluePrint.controlPointInfo, finalDifficulty, replayClient),
