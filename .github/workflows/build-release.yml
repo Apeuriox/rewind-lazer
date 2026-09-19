@@ -20,8 +20,6 @@ env:
   HUSKY: "0"
   NX_DAEMON: "false"
   CSC_IDENTITY_AUTO_DISCOVERY: "false"
-  ELECTRON_CACHE: ${{ runner.temp }}/electron-cache
-  ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache
 
 jobs:
   build:
@@ -30,6 +28,9 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
+    env:
+      ELECTRON_CACHE: ${{ runner.temp }}/electron-cache
+      ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache
     strategy:
       fail-fast: false
       matrix:
