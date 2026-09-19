@@ -8,7 +8,6 @@ import {
   ListItemText,
   Menu,
   MenuItem,
-  MenuList,
   Popover,
   Stack,
   Tooltip,
@@ -24,7 +23,7 @@ import {
   VolumeOff,
   VolumeUp,
 } from "@mui/icons-material";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BaseAudioSettingsPanel } from "./BaseAudioSettingsPanel";
 import { BaseGameTimeSlider } from "./BaseGameTimeSlider";
 import { useGameClockControls, useGameClockTime } from "../../hooks/game-clock";
@@ -32,7 +31,8 @@ import { formatGameTime } from "@osujs/math";
 import { useAudioSettings, useAudioSettingsService } from "../../hooks/audio";
 import { useModControls } from "../../hooks/mods";
 import modHiddenImg from "../../../assets/mod_hidden.png";
-import { playbackSpeedOptions, PlaybarColors } from "../../utils/constants";
+import { formatPlaybackSpeed, PlaybarColors } from "../../utils/constants";
+import { BasePlaybackSpeedPanel } from "./BasePlaybackSpeedPanel";
 
 import { useSettingsModalContext } from "../../providers/SettingsProvider";
 import { ReplayAnalysisEvent, ReplayClient } from "@osujs/core";
@@ -424,23 +424,17 @@ interface BaseSpeedButtonProps {
   onChange: (value: number) => any;
 }
 
-const speedLabels: Record<number, string> = { 0.75: "HT", 1.5: "DT" } as const;
-
 function BaseSpeedButton(props: BaseSpeedButtonProps) {
   const { value, replaySpeed, onChange } = props;
 
-  const [anchorEl, setAnchorEl] = useState(null);
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const open = Boolean(anchorEl);
-  const handleClick = (event: any) => {
-    setAnchorEl(event.currentTarget);
+  const handleClick = (event: MouseEvent<HTMLElement>) => {
+    setAnchorEl(open ? null : event.currentTarget);
   };
   const handleClose = () => {
     setAnchorEl(null);
   };
-  const formatSpeed = (s: number) => `${Number(s.toFixed(2))}x`;
-  const selectableSpeeds = playbackSpeedOptions(value, replaySpeed);
-
-  // Floating point issues?
 
   return (
     <>
@@ -449,20 +443,25 @@ function BaseSpeedButton(props: BaseSpeedButtonProps) {
           color: "text.primary",
           textTransform: "none",
           fontSize: "1em",
-          // minWidth: "0",
-          // px: 2,
+          fontVariantNumeric: "tabular-nums",
+          transitionProperty: "background-color, color, transform",
+          transitionDuration: "120ms",
+          "&:active": { transform: "scale(0.96)" },
         }}
         size={"small"}
+        aria-label="Playback speed"
+        aria-haspopup="true"
+        aria-expanded={open}
         onClick={handleClick}
         onFocus={ignoreFocus}
       >
-        {formatSpeed(value)}
-        {/*<Typography>{formatSpeed(value)}</Typography>*/}
+        {formatPlaybackSpeed(value)}
       </Button>
-      <Menu
+      <Popover
         open={open}
         onClose={handleClose}
         anchorEl={anchorEl}
+        PaperProps={{ sx: { overflow: "visible" } }}
         anchorOrigin={{
           vertical: "top",
           horizontal: "center",
@@ -472,24 +471,8 @@ function BaseSpeedButton(props: BaseSpeedButtonProps) {
           horizontal: "center",
         }}
       >
-        <MenuList>
-          {selectableSpeeds.map((s) => (
-            <MenuItem
-              key={s}
-              onClick={() => {
-                onChange(s);
-                handleClose();
-              }}
-              sx={{ width: "120px", maxWidth: "100%" }}
-            >
-              <ListItemText>{formatSpeed(s)}</ListItemText>
-              <Typography variant="body2" color="text.secondary">
-                {speedLabels[s] ?? (s === replaySpeed ? "Replay" : "")}
-              </Typography>
-            </MenuItem>
-          ))}
-        </MenuList>
-      </Menu>
+        <BasePlaybackSpeedPanel value={value} replaySpeed={replaySpeed} onChange={onChange} />
+      </Popover>
     </>
   );
 }

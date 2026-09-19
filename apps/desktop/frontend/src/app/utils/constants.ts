@@ -14,6 +14,84 @@ export const RewindLazerRepository = {
 };
 export const ALLOWED_SPEEDS = [0.25, 0.75, 1.0, 1.5, 2.0, 4.0];
 
+export const PLAYBACK_SPEED_MIN = 0.25;
+export const PLAYBACK_SPEED_MAX = 2;
+export const PLAYBACK_SPEED_NUDGE = 0.05;
+export const HT_PLAYBACK_SPEED = 0.75;
+export const DT_PLAYBACK_SPEED = 1.5;
+const PLAYBACK_SPEED_SNAP_THRESHOLD = 0.02;
+
+export type PlaybackSpeedMark = {
+  value: number;
+  label: string;
+  placement: "above" | "below";
+  isReplay: boolean;
+};
+
+function speedsAlmostEqual(a: number, b: number) {
+  return Math.abs(a - b) < 0.005;
+}
+
+export function roundPlaybackSpeed(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+export function clampPlaybackSpeed(value: number) {
+  return Math.min(PLAYBACK_SPEED_MAX, Math.max(PLAYBACK_SPEED_MIN, roundPlaybackSpeed(value)));
+}
+
+export function formatPlaybackSpeed(value: number) {
+  return `${roundPlaybackSpeed(value).toFixed(2)}x`;
+}
+
+export function playbackSpeedTrackPercent(value: number) {
+  return ((value - PLAYBACK_SPEED_MIN) / (PLAYBACK_SPEED_MAX - PLAYBACK_SPEED_MIN)) * 100;
+}
+
+export function playbackSpeedMarks(replaySpeed?: number): PlaybackSpeedMark[] {
+  const marks: PlaybackSpeedMark[] = [
+    { value: HT_PLAYBACK_SPEED, label: "HT", placement: "below", isReplay: false },
+    { value: DT_PLAYBACK_SPEED, label: "DT", placement: "below", isReplay: false },
+  ];
+
+  if (
+    typeof replaySpeed === "number" &&
+    Number.isFinite(replaySpeed) &&
+    replaySpeed >= PLAYBACK_SPEED_MIN &&
+    replaySpeed <= PLAYBACK_SPEED_MAX
+  ) {
+    const existing = marks.find((mark) => speedsAlmostEqual(mark.value, replaySpeed));
+    if (existing) {
+      existing.label = `${existing.label} · Replay`;
+      existing.isReplay = true;
+    } else {
+      marks.push({ value: roundPlaybackSpeed(replaySpeed), label: "Replay", placement: "above", isReplay: true });
+    }
+  }
+
+  return marks.sort((a, b) => a.value - b.value);
+}
+
+export function snapPlaybackSpeed(value: number, marks: Array<{ value: number }>) {
+  const rounded = roundPlaybackSpeed(value);
+  let nearest = rounded;
+  let bestDistance = PLAYBACK_SPEED_SNAP_THRESHOLD;
+  for (const mark of marks) {
+    const distance = Math.abs(mark.value - rounded);
+    if (distance <= bestDistance) {
+      bestDistance = distance;
+      nearest = mark.value;
+    }
+  }
+  return clampPlaybackSpeed(nearest);
+}
+
+export function nudgePlaybackSpeed(value: number, delta: number) {
+  if (value > PLAYBACK_SPEED_MAX && delta < 0) return PLAYBACK_SPEED_MAX;
+  if (value < PLAYBACK_SPEED_MIN && delta > 0) return PLAYBACK_SPEED_MIN;
+  return clampPlaybackSpeed(value + delta);
+}
+
 export function playbackSpeedOptions(currentSpeed: number, replaySpeed?: number) {
   return [
     ...new Set([...ALLOWED_SPEEDS, currentSpeed, replaySpeed].filter((speed): speed is number => speed !== undefined)),
