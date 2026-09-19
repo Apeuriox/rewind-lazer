@@ -38,8 +38,10 @@ export function CapsuleRangeSlider(props: CapsuleRangeSliderProps) {
   const totalMax = segments[segments.length - 1].max;
   const thumb = thumbColor(segments, value);
 
+  const visibleMarks = marks.filter((mark) => mark.value >= totalMin && mark.value <= totalMax);
+
   return (
-    <Box sx={{ position: "relative", height: 48 }}>
+    <Box sx={{ position: "relative", height: 56 }}>
       {segments.map((segment, index) => {
         const left = difficultyTrackPercent(segment.min, totalMin, totalMax);
         const width = difficultyTrackPercent(segment.max, totalMin, totalMax) - left;
@@ -64,18 +66,18 @@ export function CapsuleRangeSlider(props: CapsuleRangeSliderProps) {
         );
       })}
 
-      {marks.map((mark) => (
+      {visibleMarks.map((mark) => (
         <Box
           key={`${mark.label}-${mark.value}`}
           component="button"
           type="button"
           aria-label={`Set to map value ${mark.value}`}
-          disabled={disabled || mark.value < totalMin || mark.value > totalMax}
+          disabled={disabled}
           onClick={() => onChange(mark.value)}
           sx={{
             position: "absolute",
             left: `${difficultyTrackPercent(mark.value, totalMin, totalMax)}%`,
-            top: 28,
+            bottom: 0,
             transform: "translateX(-50%)",
             appearance: "none",
             p: 0,
@@ -110,6 +112,8 @@ export function CapsuleRangeSlider(props: CapsuleRangeSliderProps) {
         step={DIFFICULTY_SLIDER_STEP}
         value={value}
         disabled={disabled}
+        marks={visibleMarks.map((mark) => ({ value: mark.value }))}
+        valueLabelDisplay="off"
         aria-label={ariaLabel}
         onChange={(_, next) => onChange(next as number)}
         sx={{
@@ -134,7 +138,13 @@ export function CapsuleRangeSlider(props: CapsuleRangeSliderProps) {
               boxShadow: "0 0 0 4px rgba(255,255,255,0.18)",
             },
           },
-          "& .MuiSlider-mark": { display: "none" },
+          "& .MuiSlider-mark": {
+            width: 2,
+            height: 10,
+            borderRadius: 1,
+            backgroundColor: "text.secondary",
+          },
+          "& .MuiSlider-markActive": { backgroundColor: "primary.main" },
         }}
       />
     </Box>
