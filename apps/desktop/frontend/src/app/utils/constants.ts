@@ -19,7 +19,7 @@ export const PLAYBACK_SPEED_MAX = 2;
 export const PLAYBACK_SPEED_NUDGE = 0.05;
 export const HT_PLAYBACK_SPEED = 0.75;
 export const DT_PLAYBACK_SPEED = 1.5;
-const PLAYBACK_SPEED_SNAP_THRESHOLD = 0.02;
+const PLAYBACK_SPEED_SNAP_THRESHOLD = 0.008;
 
 export type PlaybackSpeedMark = {
   value: number;
@@ -62,10 +62,10 @@ export function playbackSpeedMarks(replaySpeed?: number): PlaybackSpeedMark[] {
   ) {
     const existing = marks.find((mark) => speedsAlmostEqual(mark.value, replaySpeed));
     if (existing) {
-      existing.label = `${existing.label} · Replay`;
+      existing.label = `${existing.label} · RP`;
       existing.isReplay = true;
     } else {
-      marks.push({ value: roundPlaybackSpeed(replaySpeed), label: "Replay", placement: "above", isReplay: true });
+      marks.push({ value: roundPlaybackSpeed(replaySpeed), label: "RP", placement: "above", isReplay: true });
     }
   }
 
@@ -90,6 +90,40 @@ export function nudgePlaybackSpeed(value: number, delta: number) {
   if (value > PLAYBACK_SPEED_MAX && delta < 0) return PLAYBACK_SPEED_MAX;
   if (value < PLAYBACK_SPEED_MIN && delta > 0) return PLAYBACK_SPEED_MIN;
   return clampPlaybackSpeed(value + delta);
+}
+
+/** Keeps only a non-negative decimal with at most 2 places, clamped to the slider max. */
+export function sanitizePlaybackSpeedInput(raw: string): string {
+  let cleaned = "";
+  let seenDot = false;
+  let decimals = 0;
+  for (const character of raw) {
+    if (character >= "0" && character <= "9") {
+      if (seenDot) {
+        if (decimals >= 2) continue;
+        decimals += 1;
+      }
+      cleaned += character;
+    } else if (character === "." && !seenDot) {
+      seenDot = true;
+      cleaned += character;
+    }
+  }
+
+  if (cleaned === "" || cleaned === ".") return cleaned;
+  const parsed = Number(cleaned);
+  if (!Number.isFinite(parsed)) return cleaned;
+  if (parsed > PLAYBACK_SPEED_MAX) return PLAYBACK_SPEED_MAX.toFixed(2);
+  if (parsed < PLAYBACK_SPEED_MIN && cleaned !== "0" && cleaned !== "0." && cleaned !== "0.2") {
+    return PLAYBACK_SPEED_MIN.toFixed(2);
+  }
+  return cleaned;
+}
+
+export function commitPlaybackSpeedInput(raw: string, fallback: number): number {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return clampPlaybackSpeed(fallback);
+  return clampPlaybackSpeed(parsed);
 }
 
 export function playbackSpeedOptions(currentSpeed: number, replaySpeed?: number) {

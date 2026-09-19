@@ -1,8 +1,8 @@
 import { Add, Remove } from "@mui/icons-material";
-import { Box, IconButton, Slider, Stack, Typography } from "@mui/material";
-import { useMemo } from "react";
+import { Box, IconButton, InputBase, Slider, Stack, Typography } from "@mui/material";
+import { KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
-  DT_PLAYBACK_SPEED,
+  commitPlaybackSpeedInput,
   formatPlaybackSpeed,
   HT_PLAYBACK_SPEED,
   PLAYBACK_SPEED_MAX,
@@ -11,6 +11,8 @@ import {
   PlaybackSpeedMark,
   playbackSpeedMarks,
   playbackSpeedTrackPercent,
+  roundPlaybackSpeed,
+  sanitizePlaybackSpeedInput,
   snapPlaybackSpeed,
   nudgePlaybackSpeed,
 } from "../../utils/constants";
@@ -39,6 +41,7 @@ function SpeedMarkButton({
   active: boolean;
   onSelect: (value: number) => void;
 }) {
+  const largerType = mark.label.includes("HT") || mark.label.includes("DT");
   return (
     <Box
       component="button"
@@ -53,19 +56,18 @@ function SpeedMarkButton({
         bottom: mark.placement === "below" ? 0 : undefined,
         transform: "translateX(-50%)",
         appearance: "none",
-        px: 0.5,
-        py: 0.25,
-        minWidth: 24,
-        minHeight: 24,
+        p: 0,
+        m: 0,
         border: "none",
         background: "none",
         fontFamily: "inherit",
         cursor: "pointer",
         color: active || mark.isReplay ? "primary.main" : "text.secondary",
-        fontSize: 11,
+        fontSize: largerType ? 14 : 11,
         fontWeight: active ? 600 : 500,
-        lineHeight: 1.2,
+        lineHeight: 1,
         whiteSpace: "nowrap",
+        zIndex: 1,
         "&:hover": { color: "primary.light" },
         "&:focus-visible": {
           outline: "2px solid",
@@ -80,6 +82,130 @@ function SpeedMarkButton({
   );
 }
 
+function PlaybackSpeedValueInput({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+  const focusedRef = useRef(false);
+  const [focused, setFocused] = useState(false);
+  const [draft, setDraft] = useState(() => roundPlaybackSpeed(value).toFixed(2));
+
+  useEffect(() => {
+    if (!focusedRef.current) setDraft(roundPlaybackSpeed(value).toFixed(2));
+  }, [value]);
+
+  const commit = () => {
+    const next = commitPlaybackSpeedInput(draft, value);
+    setDraft(next.toFixed(2));
+    if (next !== value) onChange(next);
+  };
+
+  const handleChange = (raw: string) => {
+    const sanitized = sanitizePlaybackSpeedInput(raw);
+    setDraft(sanitized);
+    if (sanitized === "" || sanitized === ".") return;
+    const parsed = Number(sanitized);
+    if (!Number.isFinite(parsed)) return;
+    if (parsed > PLAYBACK_SPEED_MAX) {
+      onChange(PLAYBACK_SPEED_MAX);
+      return;
+    }
+    if (parsed >= PLAYBACK_SPEED_MIN) onChange(roundPlaybackSpeed(parsed));
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commit();
+      event.currentTarget.blur();
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setDraft(roundPlaybackSpeed(value).toFixed(2));
+      event.currentTarget.blur();
+    }
+  };
+
+  const idleValue = `${roundPlaybackSpeed(value).toFixed(2)}x`;
+
+  return (
+    <Box
+      sx={{
+        position: "relative",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        boxSizing: "border-box",
+        width: "6ch",
+        minHeight: "1.4em",
+        px: 0.5,
+        fontSize: "0.875rem",
+        fontWeight: 600,
+        fontVariantNumeric: "tabular-nums",
+        lineHeight: 1.4,
+        borderRadius: 0.5,
+        "&:focus-within": {
+          outline: "2px solid",
+          outlineColor: "primary.main",
+          outlineOffset: 0,
+        },
+      }}
+    >
+      {!focused && (
+        <Typography
+          component="span"
+          sx={{
+            fontSize: "inherit",
+            fontWeight: "inherit",
+            fontVariantNumeric: "inherit",
+            lineHeight: "inherit",
+            pointerEvents: "none",
+          }}
+        >
+          {idleValue}
+        </Typography>
+      )}
+      <InputBase
+        value={draft}
+        autoFocus
+        onFocus={(event) => {
+          focusedRef.current = true;
+          setFocused(true);
+          event.target.select();
+        }}
+        onBlur={() => {
+          focusedRef.current = false;
+          setFocused(false);
+          commit();
+        }}
+        onChange={(event) => handleChange(event.target.value)}
+        onKeyDown={handleKeyDown}
+        inputProps={{
+          inputMode: "decimal",
+          "aria-label": "Playback speed value",
+          autoComplete: "off",
+          spellCheck: false,
+        }}
+        sx={{
+          position: focused ? "static" : "absolute",
+          inset: 0,
+          width: "100%",
+          opacity: focused ? 1 : 0,
+          fontSize: "inherit",
+          fontWeight: "inherit",
+          fontVariantNumeric: "inherit",
+          "& input": {
+            boxSizing: "border-box",
+            width: "100%",
+            height: "100%",
+            padding: 0,
+            textAlign: "right",
+            cursor: "text",
+            lineHeight: "inherit",
+          },
+        }}
+      />
+    </Box>
+  );
+}
+
 export function BasePlaybackSpeedPanel(props: BasePlaybackSpeedPanelProps) {
   const { value, replaySpeed, onChange } = props;
   const marks = useMemo(() => playbackSpeedMarks(replaySpeed), [replaySpeed]);
@@ -88,14 +214,12 @@ export function BasePlaybackSpeedPanel(props: BasePlaybackSpeedPanelProps) {
   const canIncrease = value < PLAYBACK_SPEED_MAX;
 
   return (
-    <Stack sx={{ p: 2, width: 280 }} gap={1}>
-      <Stack direction="row" alignItems="baseline" justifyContent="space-between">
+    <Stack sx={{ p: 2, width: 380 }} gap={1}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between">
         <Typography variant="body2" color="text.secondary">
           Playback speed
         </Typography>
-        <Typography variant="body2" sx={{ fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
-          {formatPlaybackSpeed(value)}
-        </Typography>
+        <PlaybackSpeedValueInput value={value} onChange={onChange} />
       </Stack>
 
       <Stack direction="row" alignItems="center" gap={0.5}>
@@ -114,7 +238,7 @@ export function BasePlaybackSpeedPanel(props: BasePlaybackSpeedPanelProps) {
         </IconButton>
 
         <Box sx={{ position: "relative", flex: 1, height: 56 }}>
-          <Box sx={{ position: "absolute", left: 8, right: 8, top: 0, bottom: 0 }}>
+          <Box sx={{ position: "absolute", left: 10, right: 10, top: 0, bottom: 0 }}>
             {marks.map((mark) => (
               <SpeedMarkButton
                 key={`${mark.label}-${mark.value}`}
@@ -139,9 +263,10 @@ export function BasePlaybackSpeedPanel(props: BasePlaybackSpeedPanelProps) {
                 left: 0,
                 right: 0,
                 top: "50%",
+                zIndex: 2,
                 width: "auto",
                 transform: "translateY(-50%)",
-                py: 0,
+                padding: "6px 0",
                 "& .MuiSlider-thumb": {
                   width: 14,
                   height: 14,
