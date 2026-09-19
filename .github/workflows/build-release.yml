@@ -20,8 +20,8 @@ env:
   HUSKY: "0"
   NX_DAEMON: "false"
   CSC_IDENTITY_AUTO_DISCOVERY: "false"
-  ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
-  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+  ELECTRON_CACHE: ${{ runner.temp }}/electron-cache
+  ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache
 
 jobs:
   build:
@@ -61,9 +61,9 @@ jobs:
           path: |
             ${{ env.ELECTRON_CACHE }}
             ${{ env.ELECTRON_BUILDER_CACHE }}
-          key: electron-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+          key: electron-v2-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
           restore-keys: |
-            electron-${{ runner.os }}-
+            electron-v2-${{ runner.os }}-
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile --network-timeout 600000

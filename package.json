@@ -34,7 +34,7 @@
     "lint": "nx workspace-lint && nx lint",
     "nx": "nx",
     "osujs:local:publish": "cd dist/libs/osu && yalc push core && yalc push math && yalc push pp",
-    "postinstall": "node tools/install-realm.js",
+    "postinstall": "node tools/install-realm.js && node tools/patch-nx-git-hasher.js",
     "storybook": "start-storybook -p 6006",
     "test": "nx test",
     "update": "nx migrate latest",
