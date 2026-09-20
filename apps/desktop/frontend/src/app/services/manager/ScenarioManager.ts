@@ -228,6 +228,7 @@ export class ScenarioManager {
     });
 
     await this.gameSimulator.simulateReplay(beatmap, replay);
+    this.refreshLivePerformance(replay);
     await this.sceneManager.changeToScene(AnalysisSceneKeys.ANALYSIS);
 
     this.gameLoop.startTicker();
@@ -367,6 +368,7 @@ export class ScenarioManager {
         this.beatmapManager.setBeatmap(beatmap);
         this.gameSimulator.simulateReplay(beatmap, replay);
         this.refreshDifficultyGraph(replay, this.gameClock.durationInMs);
+        this.refreshLivePerformance(replay);
         this.gameClock.seekTo(time);
         if (wasPlaying) this.gameClock.start();
       } while (this.rebuildQueued);
@@ -380,6 +382,14 @@ export class ScenarioManager {
     void this.gameSimulator.calculateDifficulties(
       this.loadedRawBlueprint,
       duration,
+      buildRosuCalcOptions(replay, this.viewerDifficulty$.value),
+    );
+  }
+
+  private refreshLivePerformance(replay: OsuReplay) {
+    if (!this.loadedRawBlueprint) return;
+    void this.gameSimulator.calculateLivePerformance(
+      this.loadedRawBlueprint,
       buildRosuCalcOptions(replay, this.viewerDifficulty$.value),
     );
   }

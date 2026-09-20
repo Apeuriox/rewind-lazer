@@ -2,7 +2,12 @@ import { app, dialog, ipcMain } from "electron";
 import { readExtendedReplay } from "@rewind/osu-local/osr-reader";
 import { queryLazerBeatmap } from "./lazerRealmReader";
 import { resolveLazerDataDirectory } from "./lazerDataDirectory";
-import { calculateOsuStrainObjects, CalculateOsuStrainsOptions } from "./rosuPp";
+import {
+  calculateOsuPerformanceSeries,
+  calculateOsuStrainObjects,
+  CalculateOsuStrainsOptions,
+  OsuScoreSnapshot,
+} from "./rosuPp";
 
 async function userSelectDirectory(defaultPath: string) {
   const { canceled, filePaths } = await dialog.showOpenDialog({ defaultPath, properties: ["openDirectory"] });
@@ -73,4 +78,15 @@ export function setupEventListeners() {
   ipcMain.handle("calculateOsuStrains", async (event, rawBeatmap: string, options: CalculateOsuStrainsOptions = {}) => {
     return calculateOsuStrainObjects(rawBeatmap, options);
   });
+  ipcMain.handle(
+    "calculateOsuPerformanceSeries",
+    async (
+      event,
+      rawBeatmap: string,
+      options: CalculateOsuStrainsOptions = {},
+      snapshots: OsuScoreSnapshot[] = [],
+    ) => {
+      return calculateOsuPerformanceSeries(rawBeatmap, options, snapshots);
+    },
+  );
 }

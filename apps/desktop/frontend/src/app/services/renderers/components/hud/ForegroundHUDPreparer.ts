@@ -9,7 +9,7 @@ import {
 } from "@rewind/osu-pixi/classic-components";
 import { STAGE_HEIGHT, STAGE_WIDTH } from "../../constants";
 import { formatGameTime, hitWindowsForOD } from "@osujs/math";
-import { difficultyHudLines } from "@osujs/core";
+import { difficultyHudLines, formatDifficultyValue } from "@osujs/core";
 import { GameplayClock } from "../../../common/game/GameplayClock";
 import { BeatmapManager } from "../../../manager/BeatmapManager";
 import { mean, standardDeviation } from "simple-statistics";
@@ -36,7 +36,9 @@ export class ForegroundHUDPreparer {
   container: Container;
   stats: Text;
   difficultyLines: Text[];
+  starLine: Text;
   replayTypeLabel: Text;
+  ppLabel: Text;
   hitErrorBar: OsuClassicHitErrorBar;
 
   hitMinIndex = 0;
@@ -69,6 +71,17 @@ export class ForegroundHUDPreparer {
       strokeThickness: 2,
     });
     this.replayTypeLabel.anchor.set(1, 0);
+    this.ppLabel = new Text("", {
+      fontSize: 16,
+      fontWeight: "600",
+      fill: HUD_TEXT_COLOR,
+      fontFamily: "Arial",
+      align: "right",
+      stroke: 0x000000,
+      strokeThickness: 2,
+    });
+    this.ppLabel.anchor.set(1, 0);
+    this.starLine = new Text("", new TextStyle({ fontSize: 16, fontFamily: "Arial", align: "left", fill: HUD_TEXT_COLOR }));
     this.hitErrorBar = new OsuClassicHitErrorBar();
   }
 
@@ -164,21 +177,27 @@ export class ForegroundHUDPreparer {
       accNumber.prepare({ accuracy: gameplayInfo.accuracy, digitTextures, dotTexture, percentageTexture, overlap });
       accNumber.container.position.set(STAGE_WIDTH - 15, 25);
       this.container.addChild(accNumber.container);
-      this.updateReplayTypeLabel(accNumber.container.height);
+      this.updateReplayTypeLabelAndPp(accNumber.container.height);
     }
   }
 
-  private updateReplayTypeLabel(accuracyHeight: number) {
-    if (this.gameSimulator.getReplayClient() !== "LAZER") return;
+  private updateReplayTypeLabelAndPp(accuracyHeight: number) {
+    let y = 25 + accuracyHeight + 6;
+    if (this.gameSimulator.getReplayClient() === "LAZER") {
+      const age = this.gameSimulator.getReplayAgeMs();
+      const fadeProgress = Math.max(0, age - LAZER_REPLAY_LABEL_VISIBLE_MS) / LAZER_REPLAY_LABEL_FADE_MS;
+      const alpha = Math.max(0, 1 - fadeProgress);
+      if (alpha > 0) {
+        this.replayTypeLabel.alpha = alpha;
+        this.replayTypeLabel.position.set(STAGE_WIDTH - 15, y);
+        this.container.addChild(this.replayTypeLabel);
+        y += this.replayTypeLabel.height + 6;
+      }
+    }
 
-    const age = this.gameSimulator.getReplayAgeMs();
-    const fadeProgress = Math.max(0, age - LAZER_REPLAY_LABEL_VISIBLE_MS) / LAZER_REPLAY_LABEL_FADE_MS;
-    const alpha = Math.max(0, 1 - fadeProgress);
-    if (alpha <= 0) return;
-
-    this.replayTypeLabel.alpha = alpha;
-    this.replayTypeLabel.position.set(STAGE_WIDTH - 15, 25 + accuracyHeight + 6);
-    this.container.addChild(this.replayTypeLabel);
+    this.ppLabel.text = `${Math.round(this.gameSimulator.getCurrentPp())}pp`;
+    this.ppLabel.position.set(STAGE_WIDTH - 15, y);
+    this.container.addChild(this.ppLabel);
   }
 
   private updateStats() {
@@ -229,7 +248,8 @@ Mean: ${localMean.toFixed(digits)}ms
 
   private updateDifficultyStats(x: number, y: number) {
     const lines = difficultyHudLines(this.beatmapManager.getBeatmap());
-    lines.forEach((line, index) => {
+    const starIndex = 4;
+    const drawLine = (line: { text: string; change: string }, index: number, slot: number) => {
       const text = this.difficultyLines[index];
       text.text = line.text;
       text.style.fill =
@@ -238,8 +258,21 @@ Mean: ${localMean.toFixed(digits)}ms
           : line.change === "down"
           ? DECREASED_DIFFICULTY_COLOR
           : HUD_TEXT_COLOR;
-      text.position.set(x, y + index * HUD_LINE_HEIGHT);
+      text.position.set(x, y + slot * HUD_LINE_HEIGHT);
       this.container.addChild(text);
-    });
+    };
+
+    lines.slice(0, starIndex).forEach((line, index) => drawLine(line, index, index));
+
+    const stars = this.gameSimulator.getStars();
+    let slot = starIndex;
+    if (stars !== null && Number.isFinite(stars)) {
+      this.starLine.text = `Star: ${formatDifficultyValue(stars)}`;
+      this.starLine.position.set(x, y + slot * HUD_LINE_HEIGHT);
+      this.container.addChild(this.starLine);
+      slot += 1;
+    }
+
+    lines.slice(starIndex).forEach((line, index) => drawLine(line, starIndex + index, slot + index));
   }
 }

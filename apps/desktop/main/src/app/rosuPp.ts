@@ -22,20 +22,45 @@ export type OsuStrainObjects = {
   strains: number[];
 };
 
-type RosuPpJs = {
-  Beatmap: new (args: string | Uint8Array) => {
+export type OsuScoreSnapshot = {
+  maxCombo: number;
+  n300: number;
+  n100: number;
+  n50: number;
+  misses: number;
+  osuLargeTickHits?: number;
+  sliderEndHits?: number;
+  legacyTotalScore?: number | null;
+};
+
+export type OsuPerformanceSeries = {
+  stars: number;
+  pp: number[];
+};
+
+type RosuMap = {
+  free(): void;
+  readonly hitObjectTimes: Float64Array;
+};
+
+type RosuDifficulty = {
+  strains(map: unknown): {
     free(): void;
-    readonly hitObjectTimes: Float64Array;
+    readonly aim?: Float64Array;
+    readonly speed?: Float64Array;
+    readonly reading?: Float64Array;
+    readonly flashlight?: Float64Array;
   };
-  Difficulty: new (args?: Record<string, unknown>) => {
-    strains(map: unknown): {
-      free(): void;
-      readonly aim?: Float64Array;
-      readonly speed?: Float64Array;
-      readonly reading?: Float64Array;
-      readonly flashlight?: Float64Array;
-    };
+  calculate(map: unknown): { free(): void; readonly stars: number };
+  gradualPerformance(map: unknown): {
+    free(): void;
+    next(state: Record<string, unknown>): { free(): void; readonly pp: number } | undefined | null;
   };
+};
+
+type RosuPpJs = {
+  Beatmap: new (args: string | Uint8Array) => RosuMap;
+  Difficulty: new (args?: Record<string, unknown>) => RosuDifficulty;
 };
 
 let rosuPp: RosuPpJs | undefined;
@@ -60,6 +85,22 @@ function loadRosuPp(): RosuPpJs {
     rosuPp = nodeRequire(resolveRosuPpJs()) as RosuPpJs;
   }
   return rosuPp;
+}
+
+function toDifficultyArgs(options: CalculateOsuStrainsOptions): Record<string, unknown> {
+  const difficultyArgs: Record<string, unknown> = {};
+  if (options.mods !== undefined) difficultyArgs.mods = options.mods;
+  if (options.clockRate !== undefined) difficultyArgs.clockRate = options.clockRate;
+  if (options.ar !== undefined) difficultyArgs.ar = options.ar;
+  if (options.cs !== undefined) difficultyArgs.cs = options.cs;
+  if (options.od !== undefined) difficultyArgs.od = options.od;
+  if (options.hp !== undefined) difficultyArgs.hp = options.hp;
+  if (options.fixedAr !== undefined) difficultyArgs.fixedAr = options.fixedAr;
+  if (options.fixedCs !== undefined) difficultyArgs.fixedCs = options.fixedCs;
+  if (options.fixedOd !== undefined) difficultyArgs.fixedOd = options.fixedOd;
+  if (options.fixedHp !== undefined) difficultyArgs.fixedHp = options.fixedHp;
+  if (options.lazer !== undefined) difficultyArgs.lazer = options.lazer;
+  return difficultyArgs;
 }
 
 function seriesAt(series: ArrayLike<number> | undefined, index: number): number {
@@ -102,19 +143,7 @@ export function calculateOsuStrainObjects(rawBeatmap: string, options: Calculate
   const { Beatmap, Difficulty } = loadRosuPp();
   const map = new Beatmap(rawBeatmap);
   try {
-    const difficultyArgs: Record<string, unknown> = {};
-    if (options.mods !== undefined) difficultyArgs.mods = options.mods;
-    if (options.clockRate !== undefined) difficultyArgs.clockRate = options.clockRate;
-    if (options.ar !== undefined) difficultyArgs.ar = options.ar;
-    if (options.cs !== undefined) difficultyArgs.cs = options.cs;
-    if (options.od !== undefined) difficultyArgs.od = options.od;
-    if (options.hp !== undefined) difficultyArgs.hp = options.hp;
-    if (options.fixedAr !== undefined) difficultyArgs.fixedAr = options.fixedAr;
-    if (options.fixedCs !== undefined) difficultyArgs.fixedCs = options.fixedCs;
-    if (options.fixedOd !== undefined) difficultyArgs.fixedOd = options.fixedOd;
-    if (options.fixedHp !== undefined) difficultyArgs.fixedHp = options.fixedHp;
-    if (options.lazer !== undefined) difficultyArgs.lazer = options.lazer;
-    const difficulty = new Difficulty(difficultyArgs);
+    const difficulty = new Difficulty(toDifficultyArgs(options));
     const strains = difficulty.strains(map);
     try {
       return combineOsuObjectStrains(
@@ -127,6 +156,48 @@ export function calculateOsuStrainObjects(rawBeatmap: string, options: Calculate
     } finally {
       strains.free();
     }
+  } finally {
+    map.free();
+  }
+}
+
+export function calculateOsuPerformanceSeries(
+  rawBeatmap: string,
+  options: CalculateOsuStrainsOptions = {},
+  snapshots: OsuScoreSnapshot[] = [],
+): OsuPerformanceSeries {
+  const { Beatmap, Difficulty } = loadRosuPp();
+  const map = new Beatmap(rawBeatmap);
+  try {
+    const difficulty = new Difficulty(toDifficultyArgs(options));
+    const attrs = difficulty.calculate(map);
+    const stars = attrs.stars;
+    attrs.free();
+
+    const gradual = difficulty.gradualPerformance(map);
+    const pp: number[] = [];
+    try {
+      for (const snapshot of snapshots) {
+        const scoreState: Record<string, unknown> = {
+          maxCombo: snapshot.maxCombo,
+          n300: snapshot.n300,
+          n100: snapshot.n100,
+          n50: snapshot.n50,
+          misses: snapshot.misses,
+        };
+        if (snapshot.osuLargeTickHits !== undefined) scoreState.osuLargeTickHits = snapshot.osuLargeTickHits;
+        if (snapshot.sliderEndHits !== undefined) scoreState.sliderEndHits = snapshot.sliderEndHits;
+        if (snapshot.legacyTotalScore != null) scoreState.legacyTotalScore = snapshot.legacyTotalScore;
+        const result = gradual.next(scoreState);
+        if (!result) break;
+        pp.push(result.pp);
+        result.free();
+      }
+    } finally {
+      gradual.free();
+    }
+
+    return { stars, pp };
   } finally {
     map.free();
   }
