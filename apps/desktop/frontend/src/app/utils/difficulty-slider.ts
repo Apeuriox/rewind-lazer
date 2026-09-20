@@ -1,6 +1,5 @@
 export const DIFFICULTY_SLIDER_STEP = 0.1;
 export const DIFFICULTY_HIGH_COLOR = "#ff66aa";
-export const DIFFICULTY_LOW_COLOR = "#e3faff";
 
 export type DifficultySliderDimension = "approachRate" | "overallDifficulty" | "circleSize";
 
@@ -83,7 +82,7 @@ export function difficultySliderSegments(
 
   const high: DifficultySliderSegment = { min: 10, max: 11, color: DIFFICULTY_HIGH_COLOR };
   if (dimension === "approachRate") {
-    return [{ min: -10, max: 0, color: DIFFICULTY_LOW_COLOR }, main, high];
+    return [{ min: -10, max: 0 }, main, high];
   }
   return [main, high];
 }
@@ -100,6 +99,15 @@ export function clampDifficultySliderValue(
 ) {
   const { min, max } = difficultySliderRange(dimension, extendedLimits);
   return Math.min(max, Math.max(min, roundDifficultySliderValue(value)));
+}
+
+export function nudgeDifficultySliderValue(
+  dimension: DifficultySliderDimension,
+  value: number,
+  delta: number,
+  extendedLimits: boolean,
+) {
+  return clampDifficultySliderValue(dimension, value + delta, extendedLimits);
 }
 
 /** Shared boundaries belong to the main 0–10 capsule. */

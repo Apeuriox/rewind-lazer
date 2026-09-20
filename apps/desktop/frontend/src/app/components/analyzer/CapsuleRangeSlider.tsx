@@ -1,7 +1,6 @@
 import { Box, Slider } from "@mui/material";
 import {
   DIFFICULTY_HIGH_COLOR,
-  DIFFICULTY_LOW_COLOR,
   DIFFICULTY_SLIDER_STEP,
   DifficultySliderSegment,
   difficultyTrackPercent,
@@ -27,7 +26,6 @@ const RAIL_HEIGHT = 4;
 
 function thumbColor(segments: DifficultySliderSegment[], value: number) {
   const active = segments.find((segment) => segmentOwnsValue(segment, value));
-  if (active?.color === DIFFICULTY_LOW_COLOR) return "#1a1a1a";
   if (active?.color === DIFFICULTY_HIGH_COLOR) return "#ffffff";
   return undefined;
 }

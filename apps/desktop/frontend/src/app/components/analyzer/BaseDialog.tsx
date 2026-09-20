@@ -8,7 +8,7 @@ export function PromotionFooter() {
   const appVersion = useCommonManagers().appInfoService.version;
   return (
     <Typography fontSize={"caption.fontSize"} color={"text.secondary"}>
-      Rewind Lazer {appVersion}, based on Rewind by{" "}
+      Rewind Lazer {appVersion}, based on original Rewind by{" "}, fork by Aloic
       <Link href={RewindLinks.OsuPpyShAbstrakt} target={"_blank"} color={"text.secondary"}>
         abstrakt
       </Link>{" "}

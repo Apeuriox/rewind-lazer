@@ -3,6 +3,7 @@ import {
   commitDifficultyInput,
   difficultyRequiresExtendedLimits,
   difficultySliderSegments,
+  nudgeDifficultySliderValue,
   sanitizeDifficultyInput,
   segmentOwnsValue,
 } from "./difficulty-slider";
@@ -22,7 +23,7 @@ describe("difficulty slider segments", () => {
 
   it("adds a low AR capsule from -10 to 0 when extended", () => {
     expect(difficultySliderSegments("approachRate", true)).toEqual([
-      { min: -10, max: 0, color: "#e3faff" },
+      { min: -10, max: 0 },
       { min: 0, max: 10 },
       { min: 10, max: 11, color: "#ff66aa" },
     ]);
@@ -36,6 +37,13 @@ describe("difficulty slider segments", () => {
     expect(segmentOwnsValue(main, 10)).toBe(true);
     expect(segmentOwnsValue(high, 10)).toBe(false);
     expect(segmentOwnsValue(high, 10.5)).toBe(true);
+  });
+
+  it("nudges by 0.1 and stays in range", () => {
+    expect(nudgeDifficultySliderValue("circleSize", 5, 0.1, false)).toBe(5.1);
+    expect(nudgeDifficultySliderValue("approachRate", 0, -0.1, true)).toBe(-0.1);
+    expect(nudgeDifficultySliderValue("approachRate", 0, -0.1, false)).toBe(0);
+    expect(nudgeDifficultySliderValue("circleSize", 10, 0.1, false)).toBe(10);
   });
 
   it("clamps back to 0–10 when extended limits are off", () => {

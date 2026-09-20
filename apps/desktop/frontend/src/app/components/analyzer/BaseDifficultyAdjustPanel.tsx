@@ -1,13 +1,16 @@
-import { Box, Button, InputBase, Stack, Typography } from "@mui/material";
+import { Add, Remove } from "@mui/icons-material";
+import { Box, Button, IconButton, InputBase, Stack, Typography } from "@mui/material";
 import { Beatmap } from "@osujs/core";
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
 import {
   clampDifficultySliderValue,
   commitDifficultyInput,
+  DIFFICULTY_SLIDER_STEP,
   difficultySliderRange,
   difficultySliderSegments,
   DifficultySliderDimension,
   formatDifficultySliderValue,
+  nudgeDifficultySliderValue,
   sanitizeDifficultyInput,
   ViewerDifficultyFields,
 } from "../../utils/difficulty-slider";
@@ -233,14 +236,48 @@ export function BaseDifficultyAdjustPanel(props: BaseDifficultyAdjustPanelProps)
                 onChange={(next) => onChange(row.key, next)}
               />
             </Stack>
-            <CapsuleRangeSlider
-              value={clampDifficultySliderValue(row.key, value, viewer.extendedLimits)}
-              segments={difficultySliderSegments(row.key, viewer.extendedLimits)}
-              marks={[{ value: original, label: "MAP" }]}
-              disabled={disabled}
-              ariaLabel={row.label}
-              onChange={(next) => onChange(row.key, next)}
-            />
+            <Stack direction="row" alignItems="center" gap={0.5}>
+              <IconButton
+                size="small"
+                aria-label={`Decrease ${row.label}`}
+                disabled={disabled || value <= range.min}
+                onClick={() =>
+                  onChange(row.key, nudgeDifficultySliderValue(row.key, value, -DIFFICULTY_SLIDER_STEP, viewer.extendedLimits))
+                }
+                sx={{
+                  transitionProperty: "transform, opacity",
+                  transitionDuration: "120ms",
+                  "&:active": { transform: "scale(0.96)" },
+                }}
+              >
+                <Remove fontSize="small" />
+              </IconButton>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <CapsuleRangeSlider
+                  value={clampDifficultySliderValue(row.key, value, viewer.extendedLimits)}
+                  segments={difficultySliderSegments(row.key, viewer.extendedLimits)}
+                  marks={[{ value: original, label: "MAP" }]}
+                  disabled={disabled}
+                  ariaLabel={row.label}
+                  onChange={(next) => onChange(row.key, next)}
+                />
+              </Box>
+              <IconButton
+                size="small"
+                aria-label={`Increase ${row.label}`}
+                disabled={disabled || value >= range.max}
+                onClick={() =>
+                  onChange(row.key, nudgeDifficultySliderValue(row.key, value, DIFFICULTY_SLIDER_STEP, viewer.extendedLimits))
+                }
+                sx={{
+                  transitionProperty: "transform, opacity",
+                  transitionDuration: "120ms",
+                  "&:active": { transform: "scale(0.96)" },
+                }}
+              >
+                <Add fontSize="small" />
+              </IconButton>
+            </Stack>
           </Box>
         );
       })}
