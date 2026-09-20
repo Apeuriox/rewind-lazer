@@ -2,6 +2,7 @@ import { app, dialog, ipcMain } from "electron";
 import { readExtendedReplay } from "@rewind/osu-local/osr-reader";
 import { queryLazerBeatmap } from "./lazerRealmReader";
 import { resolveLazerDataDirectory } from "./lazerDataDirectory";
+import { calculateOsuStrainObjects, CalculateOsuStrainsOptions } from "./rosuPp";
 
 async function userSelectDirectory(defaultPath: string) {
   const { canceled, filePaths } = await dialog.showOpenDialog({ defaultPath, properties: ["openDirectory"] });
@@ -47,12 +48,29 @@ export function setupEventListeners() {
   });
 
   ipcMain.handle("readOsr", async (event, filePath) => {
-    return await readExtendedReplay(filePath);
+    const replay = await readExtendedReplay(filePath);
+    // Return a plain object so Electron IPC keeps nested lazer mods.
+    return {
+      gameMode: replay.gameMode,
+      gameVersion: replay.gameVersion,
+      beatmapMD5: replay.beatmapMD5,
+      playerName: replay.playerName,
+      replayMD5: replay.replayMD5,
+      mods: replay.mods,
+      replay_data: replay.replay_data,
+      clockRate: replay.clockRate,
+      difficultyAdjust: replay.difficultyAdjust,
+      lazerScoreInfo: replay.lazerScoreInfo,
+      lazerMods: replay.lazerMods,
+    };
   });
   ipcMain.handle("queryLazerBeatmap", async (event, root, md5) => {
     return await queryLazerBeatmap(root, md5);
   });
   ipcMain.handle("resolveLazerDataDirectory", async (event, configuredPath) => {
     return await resolveLazerDataDirectory(configuredPath, app.getPath("appData"));
+  });
+  ipcMain.handle("calculateOsuStrains", async (event, rawBeatmap: string, options: CalculateOsuStrainsOptions = {}) => {
+    return calculateOsuStrainObjects(rawBeatmap, options);
   });
 }

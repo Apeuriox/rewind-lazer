@@ -1,13 +1,6 @@
 import { injectable } from "inversify";
 import { BehaviorSubject } from "rxjs";
-import {
-  Beatmap,
-  Blueprint,
-  buildBeatmap,
-  DifficultyAdjustSettings,
-  modsToBitmask,
-  parseBlueprint,
-} from "@osujs/core";
+import { Beatmap, Blueprint, buildBeatmap, DifficultyAdjustSettings, parseBlueprint } from "@osujs/core";
 import { OsuReplay } from "../../model/OsuReplay";
 import {
   clampDifficultySliderValue,
@@ -36,6 +29,7 @@ import { ReplayFileWatcher } from "../common/local/ReplayFileWatcher";
 import { ModSettingsService } from "../analysis/mod-settings";
 import { LocalBeatmapService } from "../common/local/LocalBeatmapService";
 import { Texture } from "pixi.js";
+import { buildRosuCalcOptions } from "../../utils/rosu-pp";
 
 interface Scenario {
   status: "LOADING" | "ERROR" | "DONE" | "INIT";
@@ -63,6 +57,7 @@ export class ScenarioManager {
   public viewerDifficulty$: BehaviorSubject<ViewerDifficultyFields>;
   private currentAudioSource?: CurrentAudioSource;
   private loadedBlueprint?: Blueprint;
+  private loadedRawBlueprint?: string;
   private rebuildTimer?: ReturnType<typeof setTimeout>;
   private rebuilding = false;
   private rebuildQueued = false;
@@ -111,6 +106,7 @@ export class ScenarioManager {
     this.gameSimulator.clear();
     this.localBeatmapService.clear();
     this.loadedBlueprint = undefined;
+    this.loadedRawBlueprint = undefined;
     this.viewerDifficulty$.next(DEFAULT_VIEWER_DIFFICULTY);
     this.gameLoop.stopTicker();
     // await this.sceneManager.changeToScene(AnalysisSceneKeys.IDLE);
@@ -134,6 +130,7 @@ export class ScenarioManager {
     const rawBlueprint = localBeatmap.rawBlueprint;
     const blueprint = parseBlueprint(rawBlueprint);
     this.loadedBlueprint = blueprint;
+    this.loadedRawBlueprint = rawBlueprint;
     this.viewerDifficulty$.next(DEFAULT_VIEWER_DIFFICULTY);
 
     const { metadata } = blueprint.blueprintInfo;
@@ -191,7 +188,7 @@ export class ScenarioManager {
 
     this.audioEngine.setSong(audio);
     this.gameClock.setDuration(duration);
-    this.gameSimulator.calculateDifficulties(rawBlueprint, duration, modsToBitmask(replay.mods));
+    this.refreshDifficultyGraph(replay, duration);
     this.highPrecisionAudioState$.next(highPrecisionState);
 
     // If the building is too slow or unbearable, we should push the building to a WebWorker, but right now it's ok
@@ -369,12 +366,22 @@ export class ScenarioManager {
         });
         this.beatmapManager.setBeatmap(beatmap);
         this.gameSimulator.simulateReplay(beatmap, replay);
+        this.refreshDifficultyGraph(replay, this.gameClock.durationInMs);
         this.gameClock.seekTo(time);
         if (wasPlaying) this.gameClock.start();
       } while (this.rebuildQueued);
     } finally {
       this.rebuilding = false;
     }
+  }
+
+  private refreshDifficultyGraph(replay: OsuReplay, duration: number) {
+    if (!this.loadedRawBlueprint) return;
+    void this.gameSimulator.calculateDifficulties(
+      this.loadedRawBlueprint,
+      duration,
+      buildRosuCalcOptions(replay, this.viewerDifficulty$.value),
+    );
   }
 
   // This is just the NM view of a beatmap

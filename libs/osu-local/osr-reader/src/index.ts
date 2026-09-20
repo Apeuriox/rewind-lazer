@@ -42,6 +42,8 @@ export interface LazerReplayScoreInfo {
 
 export interface ExtendedOsrReplay extends OsrReplay {
   lazerScoreInfo?: LazerReplayScoreInfo;
+  /** Raw lazer score-info mods array (`[{ acronym, settings? }, ...]`). */
+  lazerMods?: LazerReplayMod[];
   clockRate?: number;
   difficultyAdjust?: DifficultyAdjustSettings;
 }
@@ -191,8 +193,11 @@ export async function readExtendedReplay(input: string | Buffer): Promise<Extend
 
   if (scoreInfo) {
     replay.lazerScoreInfo = scoreInfo;
+    replay.lazerMods = Array.isArray(scoreInfo.mods) ? scoreInfo.mods : [];
     replay.clockRate = clockRateFromScoreInfo(scoreInfo);
     replay.difficultyAdjust = difficultyAdjustFromScoreInfo(scoreInfo);
+  } else if (replay.gameVersion > 30_000_000) {
+    replay.lazerMods = [];
   }
 
   return replay;

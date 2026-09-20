@@ -17,9 +17,9 @@ import {
 import { injectable } from "inversify";
 import type { OsuReplay } from "../../../model/OsuReplay";
 import { BehaviorSubject } from "rxjs";
-import { parser, std_diff } from "ojsama";
-import { Queue } from "typescript-collections";
-import { max } from "simple-statistics";
+import { ipcRenderer } from "electron";
+import { bucketAndNormalizeStrains } from "../../../utils/strain-graph";
+import type { CalculateOsuStrainsOptions } from "../../../utils/rosu-pp";
 
 @injectable()
 export class GameSimulator {
@@ -35,6 +35,7 @@ export class GameSimulator {
   public sliderEndMisses: CheckpointJudgement[] = [];
   public hits: [number, number, boolean][] = [];
   private replayLoadedAtMs?: number;
+  private difficultyCalcId = 0;
 
   constructor() {
     this.replayEvents$ = new BehaviorSubject<ReplayAnalysisEvent[]>([]);
@@ -42,48 +43,22 @@ export class GameSimulator {
     this.replayClient$ = new BehaviorSubject<ReplayClient | null>(null);
   }
 
-  calculateDifficulties(rawBeatmap: string, durationInMs: number, mods: number) {
-    console.log(`Calculating difficulty for beatmap with duration=${durationInMs}ms and mods=${mods}`);
-    const p = new parser();
-    p.feed(rawBeatmap);
-    const map = p.map;
-    const d = new std_diff().calc({ map, mods });
-
-    const TIME_STEP = 500;
-    const q = new Queue<[number, number]>();
-    let i = 0;
-    let sum = 0;
-    const res: number[] = [];
-
-    // O(n + m)
-    for (let t = 0; t < durationInMs; t += TIME_STEP) {
-      while (i < map.objects.length) {
-        const o = map.objects[i];
-        if (t + TIME_STEP < o.time) {
-          break;
-        }
-        const strainTotal = d.objects[i].strains[0] + d.objects[i].strains[1];
-        q.enqueue([o.time, strainTotal]);
-        sum += strainTotal;
-        i++;
-      }
-      while (!q.isEmpty()) {
-        const [time, totalStrain] = q.peek() as [number, number];
-        if (time > t - TIME_STEP) {
-          break;
-        }
-        sum -= totalStrain;
-        q.dequeue();
-      }
-      res.push(q.isEmpty() ? 0 : sum / q.size());
-    }
-    if (res.length > 0) {
-      // normalize
-      const m = max(res);
-      if (m > 0) {
-        const normalizedRes = res.map((r) => r / m);
-        this.difficulties$.next(normalizedRes);
-      }
+  async calculateDifficulties(rawBeatmap: string, durationInMs: number, options: CalculateOsuStrainsOptions) {
+    const calcId = ++this.difficultyCalcId;
+    console.log(`Calculating difficulty for beatmap with duration=${durationInMs}ms`, options);
+    try {
+      const result = (await ipcRenderer.invoke("calculateOsuStrains", rawBeatmap, options)) as {
+        times?: number[];
+        strains?: number[];
+      };
+      if (calcId !== this.difficultyCalcId) return;
+      const times = Array.isArray(result?.times) ? result.times : [];
+      const strains = Array.isArray(result?.strains) ? result.strains : [];
+      this.difficulties$.next(bucketAndNormalizeStrains(times, strains, durationInMs));
+    } catch (error) {
+      if (calcId !== this.difficultyCalcId) return;
+      console.error("Could not calculate rosu-pp difficulty graph", error);
+      this.difficulties$.next([]);
     }
   }
 
@@ -156,6 +131,7 @@ export class GameSimulator {
   }
 
   clear() {
+    this.difficultyCalcId += 1;
     this.replayEvents$.next([]);
     this.difficulties$.next([]);
     this.replayClient$.next(null);

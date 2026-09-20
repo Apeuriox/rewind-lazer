@@ -15,7 +15,7 @@ describe("lazer replay score information", () => {
     expect(replay.mods).toBe(384);
     expect(replay.clockRate).toBe(0.85);
     expect(replay.difficultyAdjust).toEqual({ approachRate: 10.3 });
-    expect(replay.lazerScoreInfo?.mods).toEqual(
+    expect(replay.lazerMods).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           acronym: "HT",
@@ -27,6 +27,7 @@ describe("lazer replay score information", () => {
         }),
       ]),
     );
+    expect(replay.lazerScoreInfo?.mods).toEqual(replay.lazerMods);
   });
 
   it("does not attempt to read appended data from a stable replay version", async () => {
