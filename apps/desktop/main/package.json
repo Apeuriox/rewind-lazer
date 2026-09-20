@@ -4,7 +4,7 @@
   "author": "Rewind Lazer contributors",
   "description": "A Rewind fork with osu!lazer replay support.",
   "license": "MIT",
-  "version": "0.1.2",
+  "version": "0.3.0",
   "main": "index.js",
   "scripts": {
     "build": "electron-builder",
