@@ -19,6 +19,7 @@ interface CapsuleRangeSliderProps {
   disabled?: boolean;
   ariaLabel: string;
   onChange: (value: number) => void;
+  onChangeCommitted?: (value: number) => void;
 }
 
 const VISUAL_GAP_PX = 4;
@@ -31,7 +32,7 @@ function thumbColor(segments: DifficultySliderSegment[], value: number) {
 }
 
 export function CapsuleRangeSlider(props: CapsuleRangeSliderProps) {
-  const { value, segments, marks = [], disabled, ariaLabel, onChange } = props;
+  const { value, segments, marks = [], disabled, ariaLabel, onChange, onChangeCommitted } = props;
   const totalMin = segments[0].min;
   const totalMax = segments[segments.length - 1].max;
   const thumb = thumbColor(segments, value);
@@ -71,7 +72,7 @@ export function CapsuleRangeSlider(props: CapsuleRangeSliderProps) {
           type="button"
           aria-label={`Set to map value ${mark.value}`}
           disabled={disabled}
-          onClick={() => onChange(mark.value)}
+          onClick={() => (onChangeCommitted ?? onChange)(mark.value)}
           sx={{
             position: "absolute",
             left: `${difficultyTrackPercent(mark.value, totalMin, totalMax)}%`,
@@ -114,6 +115,7 @@ export function CapsuleRangeSlider(props: CapsuleRangeSliderProps) {
         valueLabelDisplay="off"
         aria-label={ariaLabel}
         onChange={(_, next) => onChange(next as number)}
+        onChangeCommitted={(_, next) => onChangeCommitted?.(next as number)}
         sx={{
           position: "absolute",
           left: 0,

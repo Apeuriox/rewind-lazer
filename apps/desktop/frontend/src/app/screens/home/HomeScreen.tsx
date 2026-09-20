@@ -17,7 +17,13 @@ export function HomeScreen() {
           REWIND LAZER
         </Typography>
         <Typography fontSize={"caption.fontSize"} color={"text.secondary"}>
-          Rewind Lazer {appVersion}, based on Rewind by{" "}
+          Rewind Lazer {appVersion}, forked by{" "}
+          <Link href={RewindLinks.OsuPpyShAloic} target={"_blank"} color={"text.secondary"}>
+            Aloic
+          </Link>
+        </Typography>
+        <Typography fontSize={"caption.fontSize"} color={"text.secondary"}>
+          Based on Rewind by{" "}
           <Link href={RewindLinks.OsuPpyShAbstrakt} target={"_blank"} color={"text.secondary"}>
             abstrakt
           </Link>

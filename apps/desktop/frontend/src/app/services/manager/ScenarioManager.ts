@@ -297,6 +297,7 @@ export class ScenarioManager {
   setViewerDifficultyValue(dimension: DifficultySliderDimension, value: number) {
     const extended = this.viewerDifficulty$.value.extendedLimits;
     const nextValue = clampDifficultySliderValue(dimension, value, extended);
+    if (this.viewerDifficulty$.value[dimension] === nextValue) return;
     this.viewerDifficulty$.next({
       ...this.viewerDifficulty$.value,
       [dimension]: nextValue,

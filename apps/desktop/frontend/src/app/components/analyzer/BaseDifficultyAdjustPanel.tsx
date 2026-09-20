@@ -186,6 +186,98 @@ function DifficultyValueInput({
   );
 }
 
+function DifficultySliderRow({
+  dimension,
+  label,
+  beatmap,
+  viewer,
+  disabled,
+  onChange,
+}: {
+  dimension: DifficultySliderDimension;
+  label: string;
+  beatmap: Beatmap;
+  viewer: ViewerDifficultyFields;
+  disabled?: boolean;
+  onChange: (dimension: DifficultySliderDimension, value: number) => void;
+}) {
+  const committed = currentValue(beatmap, viewer, dimension);
+  const [draft, setDraft] = useState<number | null>(null);
+  const value = draft ?? committed;
+  const original = mapValue(beatmap, dimension);
+  const range = difficultySliderRange(dimension, viewer.extendedLimits);
+
+  useEffect(() => {
+    setDraft(null);
+  }, [committed, viewer.extendedLimits]);
+
+  const commit = (next: number) => {
+    setDraft(null);
+    if (next !== committed) onChange(dimension, next);
+  };
+
+  return (
+    <Box>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.25 }}>
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {label}
+        </Typography>
+        <DifficultyValueInput
+          value={value}
+          min={range.min}
+          max={range.max}
+          disabled={disabled}
+          ariaLabel={`${label} value`}
+          onChange={commit}
+        />
+      </Stack>
+      <Stack direction="row" alignItems="center" gap={0.5}>
+        <IconButton
+          size="small"
+          aria-label={`Decrease ${label}`}
+          disabled={disabled || value <= range.min}
+          onClick={() =>
+            commit(nudgeDifficultySliderValue(dimension, value, -DIFFICULTY_SLIDER_STEP, viewer.extendedLimits))
+          }
+          sx={{
+            transitionProperty: "transform, opacity",
+            transitionDuration: "120ms",
+            "&:active": { transform: "scale(0.96)" },
+          }}
+        >
+          <Remove fontSize="small" />
+        </IconButton>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <CapsuleRangeSlider
+            value={clampDifficultySliderValue(dimension, value, viewer.extendedLimits)}
+            segments={difficultySliderSegments(dimension, viewer.extendedLimits)}
+            marks={[{ value: original, label: "MAP" }]}
+            disabled={disabled}
+            ariaLabel={label}
+            onChange={setDraft}
+            onChangeCommitted={commit}
+          />
+        </Box>
+        <IconButton
+          size="small"
+          aria-label={`Increase ${label}`}
+          disabled={disabled || value >= range.max}
+          onClick={() =>
+            commit(nudgeDifficultySliderValue(dimension, value, DIFFICULTY_SLIDER_STEP, viewer.extendedLimits))
+          }
+          sx={{
+            transitionProperty: "transform, opacity",
+            transitionDuration: "120ms",
+            "&:active": { transform: "scale(0.96)" },
+          }}
+        >
+          <Add fontSize="small" />
+        </IconButton>
+      </Stack>
+    </Box>
+  );
+}
+
 export function BaseDifficultyAdjustPanel(props: BaseDifficultyAdjustPanelProps) {
   const { beatmap, viewer, disabled, onChange, onExtendedLimitsChange } = props;
 
@@ -217,70 +309,17 @@ export function BaseDifficultyAdjustPanel(props: BaseDifficultyAdjustPanelProps)
         </Button>
       </Stack>
 
-      {ROWS.map((row) => {
-        const value = currentValue(beatmap, viewer, row.key);
-        const original = mapValue(beatmap, row.key);
-        const range = difficultySliderRange(row.key, viewer.extendedLimits);
-        return (
-          <Box key={row.key}>
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.25 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                {row.label}
-              </Typography>
-              <DifficultyValueInput
-                value={value}
-                min={range.min}
-                max={range.max}
-                disabled={disabled}
-                ariaLabel={`${row.label} value`}
-                onChange={(next) => onChange(row.key, next)}
-              />
-            </Stack>
-            <Stack direction="row" alignItems="center" gap={0.5}>
-              <IconButton
-                size="small"
-                aria-label={`Decrease ${row.label}`}
-                disabled={disabled || value <= range.min}
-                onClick={() =>
-                  onChange(row.key, nudgeDifficultySliderValue(row.key, value, -DIFFICULTY_SLIDER_STEP, viewer.extendedLimits))
-                }
-                sx={{
-                  transitionProperty: "transform, opacity",
-                  transitionDuration: "120ms",
-                  "&:active": { transform: "scale(0.96)" },
-                }}
-              >
-                <Remove fontSize="small" />
-              </IconButton>
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <CapsuleRangeSlider
-                  value={clampDifficultySliderValue(row.key, value, viewer.extendedLimits)}
-                  segments={difficultySliderSegments(row.key, viewer.extendedLimits)}
-                  marks={[{ value: original, label: "MAP" }]}
-                  disabled={disabled}
-                  ariaLabel={row.label}
-                  onChange={(next) => onChange(row.key, next)}
-                />
-              </Box>
-              <IconButton
-                size="small"
-                aria-label={`Increase ${row.label}`}
-                disabled={disabled || value >= range.max}
-                onClick={() =>
-                  onChange(row.key, nudgeDifficultySliderValue(row.key, value, DIFFICULTY_SLIDER_STEP, viewer.extendedLimits))
-                }
-                sx={{
-                  transitionProperty: "transform, opacity",
-                  transitionDuration: "120ms",
-                  "&:active": { transform: "scale(0.96)" },
-                }}
-              >
-                <Add fontSize="small" />
-              </IconButton>
-            </Stack>
-          </Box>
-        );
-      })}
+      {ROWS.map((row) => (
+        <DifficultySliderRow
+          key={row.key}
+          dimension={row.key}
+          label={row.label}
+          beatmap={beatmap}
+          viewer={viewer}
+          disabled={disabled}
+          onChange={onChange}
+        />
+      ))}
     </Stack>
   );
 }

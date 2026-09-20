@@ -281,7 +281,7 @@ function createMenu(stableFolder: string | null, lazerFolder: string | null, def
         {
           label: "About",
           click: async () => {
-            const aboutMessage = `Rewind Lazer ${app.getVersion()}\nBased on Rewind by abstrakt`;
+            const aboutMessage = `Rewind Lazer ${app.getVersion()}, forked by Aloic\nBased on Rewind by abstrakt`;
             await dialog.showMessageBox({
               title: "About Rewind Lazer",
               type: "info",
