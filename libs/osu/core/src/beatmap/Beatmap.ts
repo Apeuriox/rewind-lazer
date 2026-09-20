@@ -3,6 +3,7 @@ import { determineDefaultPlaybackSpeed, normalizeHitObjects } from "../utils";
 import { Slider } from "../hitobjects/Slider";
 import { HitCircle } from "../hitobjects/HitCircle";
 import { OsuClassicMod } from "../mods/Mods";
+import { DifficultyAdjustSettings } from "../mods/DifficultyAdjustMod";
 import { Spinner } from "../hitobjects/Spinner";
 import { SliderCheckPoint } from "../hitobjects/SliderCheckPoint";
 import { AllHitObjects, isHitCircle, OsuHitObject } from "../hitobjects/Types";
@@ -24,6 +25,8 @@ export class Beatmap {
     public readonly appliedMods: OsuClassicMod[],
     public readonly controlPointInfo: ControlPointInfo,
     gameClockRate?: number,
+    public readonly originalDifficulty: BeatmapDifficulty = difficulty,
+    public readonly difficultyAdjust?: DifficultyAdjustSettings,
   ) {
     this.hitObjectDict = normalizeHitObjects(hitObjects);
     this.gameClockRate = gameClockRate ?? determineDefaultPlaybackSpeed(appliedMods);

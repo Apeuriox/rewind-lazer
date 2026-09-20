@@ -1,6 +1,7 @@
 import { DEFAULT_BEATMAP_DIFFICULTY } from "../beatmap/BeatmapDifficulty";
 import { HardRockMod } from "./HardRockMod";
 import { EasyMod } from "./EasyMod";
+import { DifficultyAdjustMod } from "./DifficultyAdjustMod";
 
 describe("HardRock", function () {
   describe("BeatmapDifficulty adjusting", function () {
@@ -45,4 +46,46 @@ test("EasyMod should half AR, OD, CS, HP ", () => {
 
   // Test immutability
   expect(original.approachRate).toEqual(8);
+});
+
+describe("DifficultyAdjust", function () {
+  const original = {
+    ...DEFAULT_BEATMAP_DIFFICULTY,
+    approachRate: 8,
+    drainRate: 9,
+    overallDifficulty: 8,
+    circleSize: 4,
+  };
+
+  it("overrides only the specified difficulty values", function () {
+    const actual = DifficultyAdjustMod.apply(original, { circleSize: 6.5, approachRate: 9.2 });
+    expect(actual).toEqual({
+      ...original,
+      circleSize: 6.5,
+      approachRate: 9.2,
+    });
+    expect(original.circleSize).toEqual(4);
+  });
+
+  it("does not cap values at the stable limit of 10", function () {
+    const actual = DifficultyAdjustMod.apply(original, {
+      circleSize: 11,
+      approachRate: 11,
+      overallDifficulty: 11,
+      drainRate: 11,
+    });
+    expect(actual.circleSize).toEqual(11);
+    expect(actual.approachRate).toEqual(11);
+    expect(actual.overallDifficulty).toEqual(11);
+    expect(actual.drainRate).toEqual(11);
+  });
+
+  it("allows a negative approach rate from extended limits", function () {
+    const actual = DifficultyAdjustMod.apply(original, { approachRate: -10 });
+    expect(actual.approachRate).toEqual(-10);
+  });
+
+  it("returns the original difficulty when no settings are given", function () {
+    expect(DifficultyAdjustMod.apply(original)).toBe(original);
+  });
 });

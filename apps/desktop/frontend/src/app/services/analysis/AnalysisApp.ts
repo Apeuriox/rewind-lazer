@@ -26,7 +26,7 @@ export class AnalysisApp {
     public readonly osuFolderService: OsuFolderService,
     private readonly replayService: ReplayService,
     private readonly gameLoop: GameLoop,
-    private readonly beatmapManager: BeatmapManager,
+    public readonly beatmapManager: BeatmapManager,
     private readonly sceneManager: AnalysisSceneManager,
     private readonly pixiRenderer: PixiRendererManager,
   ) {}

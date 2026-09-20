@@ -7,7 +7,7 @@ import { useAppDispatch, useAppSelector } from "../../hooks/redux";
 import UpdateIcon from "@mui/icons-material/Update";
 import { setUpdateModalOpen } from "../../store/update/slice";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { ELECTRON_UPDATE_FLAG } from "../../utils/constants";
+import { ELECTRON_UPDATE_FLAG, RewindLazerRepository } from "../../utils/constants";
 import { useAppInfo } from "../../hooks/app-info";
 
 const tooltipPosition = {
@@ -21,11 +21,8 @@ const tooltipPosition = {
   },
 };
 
-const repoOwner = "abstrakt8";
-const repoName = "rewind";
-
-const latestReleaseUrl = `https://github.com/${repoOwner}/${repoName}/releases/latest`;
-const latestReleaseApi = `https://api.github.com/repos/${repoOwner}/${repoName}/releases/latest`;
+const latestReleaseUrl = `${RewindLazerRepository.url}/releases/latest`;
+const latestReleaseApi = `https://api.github.com/repos/${RewindLazerRepository.owner}/${RewindLazerRepository.name}/releases/latest`;
 
 function useCheckForUpdate() {
   const { appVersion } = useAppInfo();
@@ -35,6 +32,7 @@ function useCheckForUpdate() {
     latestVersion: "",
   });
   useEffect(() => {
+    if (ELECTRON_UPDATE_FLAG) return;
     (async function () {
       const response = await fetch(latestReleaseApi);
       const json = await response.json();

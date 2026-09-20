@@ -1,4 +1,14 @@
-import { nextPlaybackSpeed, playbackSpeedOptions, previousPlaybackSpeed } from "./constants";
+import {
+  clampPlaybackSpeed,
+  commitPlaybackSpeedInput,
+  nextPlaybackSpeed,
+  nudgePlaybackSpeed,
+  playbackSpeedMarks,
+  playbackSpeedOptions,
+  previousPlaybackSpeed,
+  sanitizePlaybackSpeedInput,
+  snapPlaybackSpeed,
+} from "./constants";
 
 describe("custom replay playback speeds", () => {
   it("keeps the replay speed available after switching to a standard speed", () => {
@@ -10,5 +20,66 @@ describe("custom replay playback speeds", () => {
     expect(nextPlaybackSpeed(0.85, 0.85)).toBe(1);
     expect(previousPlaybackSpeed(1, 0.85)).toBe(0.85);
     expect(previousPlaybackSpeed(0.85, 0.85)).toBe(0.75);
+  });
+});
+
+describe("playback speed slider marks", () => {
+  it("always marks HT and DT", () => {
+    expect(playbackSpeedMarks()).toEqual([
+      { value: 0.75, label: "HT", placement: "below", isReplay: false },
+      { value: 1.5, label: "DT", placement: "below", isReplay: false },
+    ]);
+  });
+
+  it("puts a distinct replay rate above the track as RP", () => {
+    expect(playbackSpeedMarks(0.85)).toEqual([
+      { value: 0.75, label: "HT", placement: "below", isReplay: false },
+      { value: 0.85, label: "RP", placement: "above", isReplay: true },
+      { value: 1.5, label: "DT", placement: "below", isReplay: false },
+    ]);
+  });
+
+  it("merges the replay mark when it matches HT or DT", () => {
+    expect(playbackSpeedMarks(0.75)).toEqual([
+      { value: 0.75, label: "HT · RP", placement: "below", isReplay: true },
+      { value: 1.5, label: "DT", placement: "below", isReplay: false },
+    ]);
+  });
+
+  it("snaps values near HT, DT, or the replay rate", () => {
+    const marks = playbackSpeedMarks(0.85);
+    expect(snapPlaybackSpeed(0.76, marks)).toBe(0.75);
+    expect(snapPlaybackSpeed(0.86, marks)).toBe(0.85);
+    expect(snapPlaybackSpeed(1.49, marks)).toBe(1.5);
+    expect(snapPlaybackSpeed(1.1, marks)).toBe(1.1);
+    expect(snapPlaybackSpeed(0.73, marks)).toBe(0.73);
+    expect(snapPlaybackSpeed(1.08, marks)).toBe(1.08);
+  });
+
+  it("clamps and nudges within the slider range", () => {
+    expect(clampPlaybackSpeed(4)).toBe(2);
+    expect(nudgePlaybackSpeed(0.75, 0.05)).toBe(0.8);
+    expect(nudgePlaybackSpeed(4, -0.05)).toBe(2);
+    expect(nudgePlaybackSpeed(2, 0.05)).toBe(2);
+  });
+
+  it("rejects symbols and clamps typed values above the max", () => {
+    expect(sanitizePlaybackSpeedInput("1.08x")).toBe("1.08");
+    expect(sanitizePlaybackSpeedInput("-0.5")).toBe("0.5");
+    expect(sanitizePlaybackSpeedInput("1.2.3")).toBe("1.23");
+    expect(sanitizePlaybackSpeedInput("1.239")).toBe("1.23");
+    expect(sanitizePlaybackSpeedInput("3")).toBe("2.00");
+    expect(sanitizePlaybackSpeedInput("2.01")).toBe("2.00");
+    expect(sanitizePlaybackSpeedInput("0.")).toBe("0.");
+    expect(sanitizePlaybackSpeedInput("0.2")).toBe("0.2");
+    expect(sanitizePlaybackSpeedInput("0.1")).toBe("0.25");
+    expect(sanitizePlaybackSpeedInput("0.24")).toBe("0.25");
+  });
+
+  it("commits typed values into the slider range", () => {
+    expect(commitPlaybackSpeedInput("1.08", 1)).toBe(1.08);
+    expect(commitPlaybackSpeedInput("0.1", 1)).toBe(0.25);
+    expect(commitPlaybackSpeedInput("", 1.08)).toBe(1.08);
+    expect(commitPlaybackSpeedInput("abc", 0.85)).toBe(0.85);
   });
 });

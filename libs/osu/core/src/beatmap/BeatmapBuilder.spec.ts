@@ -4,6 +4,7 @@ import { defaultGameState } from "../gameplay/GameState";
 import { GameStateEvaluator, gameStateEvaluatorOptionsForClient } from "../gameplay/GameStateEvaluator";
 import { OsuAction } from "../replays/Replay";
 import { buildBeatmap } from "./BeatmapBuilder";
+import { approachRateToApproachDuration, circleSizeToScale } from "@osujs/math";
 
 const sliderBlueprint = parseBlueprint(`osu file format v14
 [General]
@@ -137,5 +138,56 @@ describe("buildBeatmap slider end checkpoints", () => {
     });
 
     expect(state.checkPointVerdict[end.id]).toEqual({ hit: false });
+  });
+});
+
+describe("buildBeatmap difficulty adjust", () => {
+  it("applies CS/AR/OD/HP overrides above the stable cap of 10", () => {
+    const beatmap = buildBeatmap(sliderBlueprint, {
+      addStacking: false,
+      difficultyAdjust: {
+        circleSize: 11,
+        approachRate: 11,
+        overallDifficulty: 11,
+        drainRate: 11,
+      },
+    });
+    const slider = beatmap.hitObjects[0] as Slider;
+
+    expect(beatmap.difficulty).toEqual({
+      ...sliderBlueprint.defaultDifficulty,
+      circleSize: 11,
+      approachRate: 11,
+      overallDifficulty: 11,
+      drainRate: 11,
+    });
+    expect(slider.head.scale).toBeCloseTo(circleSizeToScale(11));
+    expect(slider.head.approachDuration).toBeCloseTo(approachRateToApproachDuration(11));
+  });
+
+  it("keeps unspecified values after Easy", () => {
+    const beatmap = buildBeatmap(sliderBlueprint, {
+      addStacking: false,
+      mods: ["EASY"],
+      difficultyAdjust: { circleSize: 7 },
+    });
+
+    expect(beatmap.difficulty.circleSize).toEqual(7);
+    expect(beatmap.difficulty.approachRate).toEqual(2.5);
+    expect(beatmap.difficulty.overallDifficulty).toEqual(2.5);
+    expect(beatmap.difficulty.drainRate).toEqual(2.5);
+  });
+
+  it("keeps the blueprint difficulty as the original values", () => {
+    const beatmap = buildBeatmap(sliderBlueprint, {
+      addStacking: false,
+      mods: ["HARD_ROCK"],
+      difficultyAdjust: { approachRate: 11 },
+    });
+
+    expect(beatmap.originalDifficulty).toEqual(sliderBlueprint.defaultDifficulty);
+    expect(beatmap.difficultyAdjust).toEqual({ approachRate: 11 });
+    expect(beatmap.difficulty.approachRate).toEqual(11);
+    expect(beatmap.difficulty.circleSize).toBeCloseTo(5.2);
   });
 });

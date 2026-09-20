@@ -1,11 +1,23 @@
 {
-  "appId": "sh.abstrakt.rewind",
-  "productName": "Rewind",
+  "appId": "io.github.apeuriox.rewind-lazer",
+  "productName": "Rewind Lazer",
+  "electronVersion": "19.0.3",
+  "executableName": "rewind-lazer",
+  "artifactName": "rewind-lazer-${version}-${os}-${arch}.${ext}",
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true
   },
-  "generateUpdatesFilesForAllChannels": true,
+  "generateUpdatesFilesForAllChannels": false,
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "Apeuriox",
+      "repo": "rewind",
+      "channel": "lazer",
+      "releaseType": "release"
+    }
+  ],
   "directories": {
     "output": "dist/electron",
     "buildResources": "../../tools/electron-builder/build-resources"
@@ -14,9 +26,7 @@
     {
       "from": "../../dist/apps/rewind-electron",
       "to": "rewind-electron",
-      "filter": [
-        "main.js"
-      ]
+      "filter": ["main.js"]
     },
     {
       "from": "../../dist/apps/desktop-frontend",

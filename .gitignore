@@ -40,3 +40,6 @@ Thumbs.db
 
 # Custom
 /logs/
+/.cache/
+tools/rosu-pp-js/target/
+/tools/untracked/

@@ -1,9 +1,10 @@
 {
   "private": true,
-  "name": "rewind",
-  "author": "Rewind",
-  "description": "Will this popup in installation?",
-  "version": "0.1.3-alpha.1",
+  "name": "rewind-lazer",
+  "author": "Rewind Lazer contributors",
+  "description": "A Rewind fork with osu!lazer replay support.",
+  "license": "MIT",
+  "version": "0.3.0",
   "main": "index.js",
   "scripts": {
     "build": "electron-builder",
@@ -28,7 +29,6 @@
     "chokidar": "^3.5.2",
     "dotenv": "^10.0.0",
     "electron-log": "^4.4.1",
-    "electron-updater": "^4.6.1",
     "immer": "^9.0.7",
     "nest-winston": "^1.6.2",
     "node-osr": "^1.2.1",

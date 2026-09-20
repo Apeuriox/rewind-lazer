@@ -8,7 +8,6 @@ import {
   ListItemText,
   Menu,
   MenuItem,
-  MenuList,
   Popover,
   Stack,
   Tooltip,
@@ -21,10 +20,11 @@ import {
   PhotoCamera,
   PlayCircle,
   Settings,
+  Tune,
   VolumeOff,
   VolumeUp,
 } from "@mui/icons-material";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BaseAudioSettingsPanel } from "./BaseAudioSettingsPanel";
 import { BaseGameTimeSlider } from "./BaseGameTimeSlider";
 import { useGameClockControls, useGameClockTime } from "../../hooks/game-clock";
@@ -32,7 +32,10 @@ import { formatGameTime } from "@osujs/math";
 import { useAudioSettings, useAudioSettingsService } from "../../hooks/audio";
 import { useModControls } from "../../hooks/mods";
 import modHiddenImg from "../../../assets/mod_hidden.png";
-import { playbackSpeedOptions, PlaybarColors } from "../../utils/constants";
+import { formatPlaybackSpeed, PlaybarColors } from "../../utils/constants";
+import { BasePlaybackSpeedPanel } from "./BasePlaybackSpeedPanel";
+import { BaseDifficultyAdjustPanel } from "./BaseDifficultyAdjustPanel";
+import { useDifficultyAdjustControls } from "../../hooks/difficulty-adjust";
 
 import { useSettingsModalContext } from "../../providers/SettingsProvider";
 import { ReplayAnalysisEvent, ReplayClient } from "@osujs/core";
@@ -193,7 +196,9 @@ function highPrecisionAudioTooltip(state: HighPrecisionAudioState) {
     case "AVAILABLE":
       return "Decode the MP3 to a temporary WAV for more accurate seeking. Uses extra memory and may take a moment.";
     case "ACTIVE":
-      return "High-precision audio is on. Select to restore the original MP3 and release memory.";
+      return state.automatic
+        ? "High-precision audio was enabled automatically because this MP3 may seek inaccurately. Select to use the original MP3."
+        : "High-precision audio is on. Select to restore the original MP3 and release memory.";
     case "CONVERTING":
       return "Creating temporary WAV audio…";
     case "ERROR":
@@ -205,7 +210,7 @@ function highPrecisionAudioTooltip(state: HighPrecisionAudioState) {
         case "NOT_MP3":
           return "High-precision mode is only needed for MP3 audio.";
         case "TOO_LONG":
-          return "Unavailable for tracks over 10 minutes to avoid excessive memory usage.";
+          return "Unavailable for tracks over 15 minutes to avoid excessive memory usage.";
         case "NO_REPLAY":
           return "Load a replay to use high-precision audio.";
       }
@@ -221,7 +226,9 @@ function HighPrecisionAudioButton() {
   const statusAnnouncement = converting
     ? "Creating temporary WAV audio."
     : active
-    ? "High-precision audio enabled."
+    ? state.automatic
+      ? "High-precision audio enabled automatically."
+      : "High-precision audio enabled."
     : state.status === "ERROR"
     ? "Unable to create high-precision audio."
     : "";
@@ -420,23 +427,17 @@ interface BaseSpeedButtonProps {
   onChange: (value: number) => any;
 }
 
-const speedLabels: Record<number, string> = { 0.75: "HT", 1.5: "DT" } as const;
-
 function BaseSpeedButton(props: BaseSpeedButtonProps) {
   const { value, replaySpeed, onChange } = props;
 
-  const [anchorEl, setAnchorEl] = useState(null);
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const open = Boolean(anchorEl);
-  const handleClick = (event: any) => {
-    setAnchorEl(event.currentTarget);
+  const handleClick = (event: MouseEvent<HTMLElement>) => {
+    setAnchorEl(open ? null : event.currentTarget);
   };
   const handleClose = () => {
     setAnchorEl(null);
   };
-  const formatSpeed = (s: number) => `${Number(s.toFixed(2))}x`;
-  const selectableSpeeds = playbackSpeedOptions(value, replaySpeed);
-
-  // Floating point issues?
 
   return (
     <>
@@ -445,20 +446,25 @@ function BaseSpeedButton(props: BaseSpeedButtonProps) {
           color: "text.primary",
           textTransform: "none",
           fontSize: "1em",
-          // minWidth: "0",
-          // px: 2,
+          fontVariantNumeric: "tabular-nums",
+          transitionProperty: "background-color, color, transform",
+          transitionDuration: "120ms",
+          "&:active": { transform: "scale(0.96)" },
         }}
         size={"small"}
+        aria-label="Playback speed"
+        aria-haspopup="true"
+        aria-expanded={open}
         onClick={handleClick}
         onFocus={ignoreFocus}
       >
-        {formatSpeed(value)}
-        {/*<Typography>{formatSpeed(value)}</Typography>*/}
+        {formatPlaybackSpeed(value)}
       </Button>
-      <Menu
+      <Popover
         open={open}
         onClose={handleClose}
         anchorEl={anchorEl}
+        PaperProps={{ sx: { overflow: "visible" } }}
         anchorOrigin={{
           vertical: "top",
           horizontal: "center",
@@ -468,24 +474,8 @@ function BaseSpeedButton(props: BaseSpeedButtonProps) {
           horizontal: "center",
         }}
       >
-        <MenuList>
-          {selectableSpeeds.map((s) => (
-            <MenuItem
-              key={s}
-              onClick={() => {
-                onChange(s);
-                handleClose();
-              }}
-              sx={{ width: "120px", maxWidth: "100%" }}
-            >
-              <ListItemText>{formatSpeed(s)}</ListItemText>
-              <Typography variant="body2" color="text.secondary">
-                {speedLabels[s] ?? (s === replaySpeed ? "Replay" : "")}
-              </Typography>
-            </MenuItem>
-          ))}
-        </MenuList>
-      </Menu>
+        <BasePlaybackSpeedPanel value={value} replaySpeed={replaySpeed} onChange={onChange} />
+      </Popover>
     </>
   );
 }
@@ -496,6 +486,60 @@ function SpeedButton() {
     // <Box sx={{ display: "flex", justifyContent: "center" }}>
     <BaseSpeedButton value={speed} replaySpeed={replaySpeed} onChange={setSpeed} />
     // </Box>
+  );
+}
+
+function DifficultyButton() {
+  const { beatmap, viewer, disabled, setDimension, setExtendedLimits } = useDifficultyAdjustControls();
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const open = Boolean(anchorEl);
+  const dirty =
+    viewer.approachRate !== undefined || viewer.overallDifficulty !== undefined || viewer.circleSize !== undefined;
+
+  const handleClick = (event: MouseEvent<HTMLElement>) => {
+    setAnchorEl(open ? null : event.currentTarget);
+  };
+
+  return (
+    <>
+      <IconButton
+        aria-label="Adjust AR, OD, and CS"
+        aria-haspopup="true"
+        aria-expanded={open}
+        onClick={handleClick}
+        onFocus={ignoreFocus}
+        sx={{
+          color: dirty ? "primary.main" : "text.primary",
+          transitionProperty: "color, transform",
+          transitionDuration: "120ms",
+          "&:active": { transform: "scale(0.96)" },
+        }}
+      >
+        <Tune />
+      </IconButton>
+      <Popover
+        open={open}
+        onClose={() => setAnchorEl(null)}
+        anchorEl={anchorEl}
+        PaperProps={{ sx: { overflow: "visible" } }}
+        anchorOrigin={{
+          vertical: "top",
+          horizontal: "center",
+        }}
+        transformOrigin={{
+          vertical: "bottom",
+          horizontal: "center",
+        }}
+      >
+        <BaseDifficultyAdjustPanel
+          beatmap={beatmap}
+          viewer={viewer}
+          disabled={disabled}
+          onChange={setDimension}
+          onExtendedLimitsChange={setExtendedLimits}
+        />
+      </Popover>
+    </>
   );
 }
 
@@ -543,6 +587,7 @@ export function PlayBar() {
       <Stack direction={"row"} alignItems={"center"} justifyContent={"center"}>
         <AudioButton />
         <SpeedButton />
+        <DifficultyButton />
         <HiddenButton />
         {/*<RecordButton />*/}
         <SettingsButton />

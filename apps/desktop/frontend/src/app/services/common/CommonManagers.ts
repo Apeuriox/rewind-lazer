@@ -11,6 +11,7 @@ import { ReplayCursorSettingsStore } from "./replay-cursor";
 import { SkinHolder, SkinManager, SkinSettingsStore } from "./skin";
 import { HitErrorBarSettingsStore } from "./hit-error-bar";
 import { PlaybarSettingsStore } from "./playbar";
+import { HudSettingsStore } from "./hud";
 import { OsuFolderService } from "./local/OsuFolderService";
 import { OsuDBDao } from "./local/OsuDBDao";
 import { BlueprintLocatorService } from "./local/BlueprintLocatorService";
@@ -36,6 +37,7 @@ export class CommonManagers {
     public readonly analysisCursorSettingsStore: AnalysisCursorSettingsStore,
     public readonly replayCursorSettingsStore: ReplayCursorSettingsStore,
     public readonly playbarSettingsStore: PlaybarSettingsStore,
+    public readonly hudSettingsStore: HudSettingsStore,
     public readonly appInfoService: AppInfoService,
   ) {}
 
@@ -78,6 +80,7 @@ export function createRewindTheater({ rewindSkinsFolder, appPlatform, appVersion
   container.bind(ReplayCursorSettingsStore).toSelf();
   container.bind(SkinSettingsStore).toSelf();
   container.bind(PlaybarSettingsStore).toSelf();
+  container.bind(HudSettingsStore).toSelf();
 
   // Theater facade
   container.bind(CommonManagers).toSelf();

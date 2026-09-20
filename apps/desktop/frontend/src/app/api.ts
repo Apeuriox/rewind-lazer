@@ -24,4 +24,6 @@ export const frontendAPI = {
   onDownloadFinished: (listener: Listener) => ipcRenderer.on("onDownloadFinished", (event) => listener()),
   checkForUpdate: () => ipcRenderer.invoke("checkForUpdate"),
   quitAndInstall: () => ipcRenderer.invoke("quitAndInstall"),
+  calculateOsuStrains: (rawBeatmap: string, options?: unknown) =>
+    ipcRenderer.invoke("calculateOsuStrains", rawBeatmap, options),
 };

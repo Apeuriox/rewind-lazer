@@ -17,9 +17,11 @@ import {
 import { injectable } from "inversify";
 import type { OsuReplay } from "../../../model/OsuReplay";
 import { BehaviorSubject } from "rxjs";
-import { parser, std_diff } from "ojsama";
-import { Queue } from "typescript-collections";
-import { max } from "simple-statistics";
+import { ipcRenderer } from "electron";
+import { bucketAndNormalizeStrains } from "../../../utils/strain-graph";
+import type { CalculateOsuStrainsOptions } from "../../../utils/rosu-pp";
+import { buildOsuScoreSnapshots, countPassedOsuObjects } from "../../../utils/osu-score-snapshots";
+import { HudSettingsStore } from "../hud";
 
 @injectable()
 export class GameSimulator {
@@ -31,65 +33,53 @@ export class GameSimulator {
   public replayEvents$: BehaviorSubject<ReplayAnalysisEvent[]>;
   public difficulties$: BehaviorSubject<number[]>;
   public replayClient$: BehaviorSubject<ReplayClient | null>;
+  public stars$: BehaviorSubject<number | null>;
+  public currentPp$: BehaviorSubject<number>;
   public judgements: HitObjectJudgement[] = [];
   public sliderEndMisses: CheckpointJudgement[] = [];
   public hits: [number, number, boolean][] = [];
   private replayLoadedAtMs?: number;
+  private difficultyCalcId = 0;
+  private performanceCalcId = 0;
+  private beatmap?: Beatmap;
+  private ppByObject: number[] = [];
+  private lastPassedOsuObjects = -1;
 
-  constructor() {
+  constructor(private readonly hudSettingsStore: HudSettingsStore) {
     this.replayEvents$ = new BehaviorSubject<ReplayAnalysisEvent[]>([]);
     this.difficulties$ = new BehaviorSubject<number[]>([]);
     this.replayClient$ = new BehaviorSubject<ReplayClient | null>(null);
+    this.stars$ = new BehaviorSubject<number | null>(null);
+    this.currentPp$ = new BehaviorSubject<number>(0);
   }
 
-  calculateDifficulties(rawBeatmap: string, durationInMs: number, mods: number) {
-    console.log(`Calculating difficulty for beatmap with duration=${durationInMs}ms and mods=${mods}`);
-    const p = new parser();
-    p.feed(rawBeatmap);
-    const map = p.map;
-    const d = new std_diff().calc({ map, mods });
-
-    const TIME_STEP = 500;
-    const q = new Queue<[number, number]>();
-    let i = 0;
-    let sum = 0;
-    const res: number[] = [];
-
-    // O(n + m)
-    for (let t = 0; t < durationInMs; t += TIME_STEP) {
-      while (i < map.objects.length) {
-        const o = map.objects[i];
-        if (t + TIME_STEP < o.time) {
-          break;
-        }
-        const strainTotal = d.objects[i].strains[0] + d.objects[i].strains[1];
-        q.enqueue([o.time, strainTotal]);
-        sum += strainTotal;
-        i++;
-      }
-      while (!q.isEmpty()) {
-        const [time, totalStrain] = q.peek() as [number, number];
-        if (time > t - TIME_STEP) {
-          break;
-        }
-        sum -= totalStrain;
-        q.dequeue();
-      }
-      res.push(q.isEmpty() ? 0 : sum / q.size());
-    }
-    if (res.length > 0) {
-      // normalize
-      const m = max(res);
-      if (m > 0) {
-        const normalizedRes = res.map((r) => r / m);
-        this.difficulties$.next(normalizedRes);
-      }
+  async calculateDifficulties(rawBeatmap: string, durationInMs: number, options: CalculateOsuStrainsOptions) {
+    const calcId = ++this.difficultyCalcId;
+    console.log(`Calculating difficulty for beatmap with duration=${durationInMs}ms`, options);
+    try {
+      const result = (await ipcRenderer.invoke("calculateOsuStrains", rawBeatmap, options)) as {
+        times?: number[];
+        strains?: number[];
+      };
+      if (calcId !== this.difficultyCalcId) return;
+      const times = Array.isArray(result?.times) ? result.times : [];
+      const strains = Array.isArray(result?.strains) ? result.strains : [];
+      this.difficulties$.next(bucketAndNormalizeStrains(times, strains, durationInMs));
+    } catch (error) {
+      if (calcId !== this.difficultyCalcId) return;
+      console.error("Could not calculate rosu-pp difficulty graph", error);
+      this.difficulties$.next([]);
     }
   }
 
   calculateHitErrorArray() {}
 
   simulateReplay(beatmap: Beatmap, replay: OsuReplay) {
+    this.beatmap = beatmap;
+    this.ppByObject = [];
+    this.lastPassedOsuObjects = -1;
+    this.stars$.next(null);
+    this.currentPp$.next(0);
     this.replayClient$.next(replay.client);
     this.gameplayTimeMachine = new BucketedGameStateTimeMachine(
       replay.frames,
@@ -131,7 +121,55 @@ export class GameSimulator {
     if (this.gameplayTimeMachine && this.gameplayEvaluator) {
       this.currentState = this.gameplayTimeMachine.gameStateAt(gameTimeInMs);
       this.currentInfo = this.gameplayEvaluator.evaluateReplayState(this.currentState!);
+      this.syncCurrentPp();
     }
+  }
+
+  async calculateLivePerformance(rawBeatmap: string, options: CalculateOsuStrainsOptions) {
+    const { ppEnabled, starsEnabled } = this.hudSettingsStore.settings;
+    if (!ppEnabled && !starsEnabled) {
+      this.performanceCalcId += 1;
+      this.stars$.next(null);
+      this.ppByObject = [];
+      this.lastPassedOsuObjects = -1;
+      this.currentPp$.next(0);
+      return;
+    }
+
+    const calcId = ++this.performanceCalcId;
+    const state = this.lastState;
+    const beatmap = this.beatmap;
+    const client = this.getReplayClient();
+    if (!state || !beatmap || !client) return;
+    try {
+      const snapshots = ppEnabled ? buildOsuScoreSnapshots(beatmap, state, client) : [];
+      const result = (await ipcRenderer.invoke("calculateOsuPerformanceSeries", rawBeatmap, options, snapshots)) as {
+        stars?: number;
+        pp?: number[];
+      };
+      if (calcId !== this.performanceCalcId) return;
+      this.stars$.next(typeof result?.stars === "number" ? result.stars : null);
+      this.ppByObject = Array.isArray(result?.pp) ? result.pp : [];
+      this.lastPassedOsuObjects = -1;
+      this.syncCurrentPp();
+    } catch (error) {
+      if (calcId !== this.performanceCalcId) return;
+      console.error("Could not calculate rosu-pp performance", error);
+      this.stars$.next(null);
+      this.ppByObject = [];
+      this.currentPp$.next(0);
+    }
+  }
+
+  private syncCurrentPp() {
+    if (!this.beatmap || !this.currentState) {
+      this.currentPp$.next(0);
+      return;
+    }
+    const passed = countPassedOsuObjects(this.beatmap, this.currentState.judgedObjects);
+    if (passed === this.lastPassedOsuObjects) return;
+    this.lastPassedOsuObjects = passed;
+    this.currentPp$.next(passed > 0 ? this.ppByObject[passed - 1] ?? 0 : 0);
   }
 
   getCurrentState() {
@@ -155,9 +193,24 @@ export class GameSimulator {
     // In case it takes unbearably long -> we might need a web worker
   }
 
+  getCurrentPp() {
+    return this.currentPp$.getValue();
+  }
+
+  getStars() {
+    return this.stars$.getValue();
+  }
+
   clear() {
+    this.difficultyCalcId += 1;
+    this.performanceCalcId += 1;
+    this.beatmap = undefined;
+    this.ppByObject = [];
+    this.lastPassedOsuObjects = -1;
     this.replayEvents$.next([]);
     this.difficulties$.next([]);
+    this.stars$.next(null);
+    this.currentPp$.next(0);
     this.replayClient$.next(null);
     this.judgements = [];
     this.sliderEndMisses = [];

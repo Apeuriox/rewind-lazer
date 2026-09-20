@@ -124,6 +124,9 @@ function handleActivate() {
 }
 
 (function main() {
+  // Keep settings, logs and Chromium state separate from the original Rewind.
+  app.setName("rewind-lazer");
+
   // Recommended way to use electron-log whenever we write console.log
   Object.assign(console, log.functions);
 
@@ -132,7 +135,7 @@ function handleActivate() {
   if (!isLocked) app.quit();
 
   // Required for `electron.Notification` to work
-  app.setAppUserModelId("sh.abstrakt.rewind");
+  app.setAppUserModelId("io.github.apeuriox.rewind-lazer");
 
   // https://peter.sh/experiments/chromium-command-line-switches/
   // So that the audio can't be stopped with media keys
@@ -143,8 +146,6 @@ function handleActivate() {
   // use it instead of rendering a power-point presentation.
   app.commandLine.appendSwitch("ignore-gpu-blocklist");
 
-  // TODO: Enable this once it's implemented properly
-  // initializeAutoUpdater();
   setupEventListeners();
 
   app.on("window-all-closed", handleAllWindowClosed);
@@ -280,9 +281,9 @@ function createMenu(stableFolder: string | null, lazerFolder: string | null, def
         {
           label: "About",
           click: async () => {
-            const aboutMessage = `Rewind ${app.getVersion()}\nDeveloped by abstrakt`;
+            const aboutMessage = `Rewind Lazer ${app.getVersion()}, forked by Aloic\nBased on Rewind by abstrakt`;
             await dialog.showMessageBox({
-              title: "About Rewind",
+              title: "About Rewind Lazer",
               type: "info",
               message: aboutMessage,
               // TODO: icon: NativeImage (RewindIcon)

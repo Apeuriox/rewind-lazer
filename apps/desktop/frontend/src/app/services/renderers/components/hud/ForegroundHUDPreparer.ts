@@ -1,6 +1,6 @@
 import { injectable } from "inversify";
 import { GameSimulator } from "../../../common/game/GameSimulator";
-import { Container, Text } from "pixi.js";
+import { Container, Text, TextStyle } from "pixi.js";
 import {
   calculateDigits,
   OsuClassicAccuracy,
@@ -9,14 +9,20 @@ import {
 } from "@rewind/osu-pixi/classic-components";
 import { STAGE_HEIGHT, STAGE_WIDTH } from "../../constants";
 import { formatGameTime, hitWindowsForOD } from "@osujs/math";
+import { difficultyHudLines, formatDifficultyValue } from "@osujs/core";
 import { GameplayClock } from "../../../common/game/GameplayClock";
 import { BeatmapManager } from "../../../manager/BeatmapManager";
 import { mean, standardDeviation } from "simple-statistics";
 import { HitErrorBarSettingsStore } from "../../../common/hit-error-bar";
 import { SkinHolder } from "../../../common/skin";
+import { HudSettingsStore } from "../../../common/hud";
 
 const LAZER_REPLAY_LABEL_VISIBLE_MS = 5_000;
 const LAZER_REPLAY_LABEL_FADE_MS = 500;
+const HUD_TEXT_COLOR = 0xeeeeee;
+const INCREASED_DIFFICULTY_COLOR = 0xffbce2;
+const DECREASED_DIFFICULTY_COLOR = 0xe3faff;
+const HUD_LINE_HEIGHT = 20;
 
 function calculateUnstableRate(x: number[]) {
   return x.length === 0 ? 0 : standardDeviation(x) * 10;
@@ -30,6 +36,8 @@ function calculateMean(x: number[]) {
 export class ForegroundHUDPreparer {
   container: Container;
   stats: Text;
+  difficultyLines: Text[];
+  starLine: Text;
   replayTypeLabel: Text;
   hitErrorBar: OsuClassicHitErrorBar;
 
@@ -46,9 +54,14 @@ export class ForegroundHUDPreparer {
     private readonly gameSimulator: GameSimulator,
     private readonly gameplayClock: GameplayClock,
     private readonly hitErrorBarSettingsStore: HitErrorBarSettingsStore,
+    private readonly hudSettingsStore: HudSettingsStore,
   ) {
     this.container = new Container();
-    this.stats = new Text("", { fontSize: 16, fill: 0xeeeeee, fontFamily: "Arial", align: "left" });
+    this.stats = new Text("", { fontSize: 16, fill: HUD_TEXT_COLOR, fontFamily: "Arial", align: "left" });
+    this.difficultyLines = Array.from(
+      { length: 5 },
+      () => new Text("", new TextStyle({ fontSize: 16, fontFamily: "Arial", align: "left", fill: HUD_TEXT_COLOR })),
+    );
     this.replayTypeLabel = new Text("Lazer Replay", {
       fontSize: 16,
       fontWeight: "600",
@@ -59,6 +72,7 @@ export class ForegroundHUDPreparer {
       strokeThickness: 2,
     });
     this.replayTypeLabel.anchor.set(1, 0);
+    this.starLine = new Text("", new TextStyle({ fontSize: 16, fontFamily: "Arial", align: "left", fill: HUD_TEXT_COLOR }));
     this.hitErrorBar = new OsuClassicHitErrorBar();
   }
 
@@ -154,21 +168,36 @@ export class ForegroundHUDPreparer {
       accNumber.prepare({ accuracy: gameplayInfo.accuracy, digitTextures, dotTexture, percentageTexture, overlap });
       accNumber.container.position.set(STAGE_WIDTH - 15, 25);
       this.container.addChild(accNumber.container);
-      this.updateReplayTypeLabel(accNumber.container.height);
+      this.updateReplayTypeLabelAndPp(accNumber.container.height);
     }
   }
 
-  private updateReplayTypeLabel(accuracyHeight: number) {
-    if (this.gameSimulator.getReplayClient() !== "LAZER") return;
+  private updateReplayTypeLabelAndPp(accuracyHeight: number) {
+    let y = 25 + accuracyHeight + 6;
+    if (this.gameSimulator.getReplayClient() === "LAZER") {
+      const age = this.gameSimulator.getReplayAgeMs();
+      const fadeProgress = Math.max(0, age - LAZER_REPLAY_LABEL_VISIBLE_MS) / LAZER_REPLAY_LABEL_FADE_MS;
+      const alpha = Math.max(0, 1 - fadeProgress);
+      if (alpha > 0) {
+        this.replayTypeLabel.alpha = alpha;
+        this.replayTypeLabel.position.set(STAGE_WIDTH - 15, y);
+        this.container.addChild(this.replayTypeLabel);
+        y += this.replayTypeLabel.height + 6;
+      }
+    }
 
-    const age = this.gameSimulator.getReplayAgeMs();
-    const fadeProgress = Math.max(0, age - LAZER_REPLAY_LABEL_VISIBLE_MS) / LAZER_REPLAY_LABEL_FADE_MS;
-    const alpha = Math.max(0, 1 - fadeProgress);
-    if (alpha <= 0) return;
+    if (!this.hudSettingsStore.settings.ppEnabled) return;
 
-    this.replayTypeLabel.alpha = alpha;
-    this.replayTypeLabel.position.set(STAGE_WIDTH - 15, 25 + accuracyHeight + 6);
-    this.container.addChild(this.replayTypeLabel);
+    const skin = this.skinManager.getSkin();
+    const ppNumber = new OsuClassicNumber();
+    ppNumber.prepare({
+      digits: calculateDigits(Math.max(0, Math.round(this.gameSimulator.getCurrentPp()))),
+      textures: skin.getScoreTextures(),
+      overlap: skin.config.fonts.scoreOverlap,
+    });
+    ppNumber.anchorX = 1;
+    ppNumber.position.set(STAGE_WIDTH - 15, y);
+    this.container.addChild(ppNumber);
   }
 
   private updateStats() {
@@ -213,6 +242,38 @@ Mean: ${localMean.toFixed(digits)}ms
 
       this.stats.position.set(25, 50);
       this.container.addChild(this.stats);
+      this.updateDifficultyStats(25, 50 + this.stats.height);
     }
+  }
+
+  private updateDifficultyStats(x: number, y: number) {
+    const { difficultyStatsEnabled, starsEnabled } = this.hudSettingsStore.settings;
+    const lines = difficultyStatsEnabled ? difficultyHudLines(this.beatmapManager.getBeatmap()) : [];
+    const starIndex = 4;
+    const drawLine = (line: { text: string; change: string }, index: number, slot: number) => {
+      const text = this.difficultyLines[index];
+      text.text = line.text;
+      text.style.fill =
+        line.change === "up"
+          ? INCREASED_DIFFICULTY_COLOR
+          : line.change === "down"
+          ? DECREASED_DIFFICULTY_COLOR
+          : HUD_TEXT_COLOR;
+      text.position.set(x, y + slot * HUD_LINE_HEIGHT);
+      this.container.addChild(text);
+    };
+
+    lines.slice(0, starIndex).forEach((line, index) => drawLine(line, index, index));
+
+    const stars = this.gameSimulator.getStars();
+    let slot = Math.min(starIndex, lines.length);
+    if (starsEnabled && stars !== null && Number.isFinite(stars)) {
+      this.starLine.text = `Star: ${formatDifficultyValue(stars)}`;
+      this.starLine.position.set(x, y + slot * HUD_LINE_HEIGHT);
+      this.container.addChild(this.starLine);
+      slot += 1;
+    }
+
+    lines.slice(starIndex).forEach((line, index) => drawLine(line, starIndex + index, slot + index));
   }
 }
