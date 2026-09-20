@@ -1,5 +1,6 @@
 import { injectable } from "inversify";
 import { BehaviorSubject } from "rxjs";
+import { distinctUntilChanged, map, skip } from "rxjs/operators";
 import { Beatmap, Blueprint, buildBeatmap, DifficultyAdjustSettings, parseBlueprint } from "@osujs/core";
 import { OsuReplay } from "../../model/OsuReplay";
 import {
@@ -30,6 +31,7 @@ import { ModSettingsService } from "../analysis/mod-settings";
 import { LocalBeatmapService } from "../common/local/LocalBeatmapService";
 import { Texture } from "pixi.js";
 import { buildRosuCalcOptions } from "../../utils/rosu-pp";
+import { HudSettingsStore } from "../common/hud";
 
 interface Scenario {
   status: "LOADING" | "ERROR" | "DONE" | "INIT";
@@ -78,6 +80,7 @@ export class ScenarioManager {
     private readonly sceneManager: AnalysisSceneManager,
     private readonly replayWatcher: ReplayFileWatcher,
     private readonly audioEngine: AudioEngine,
+    private readonly hudSettingsStore: HudSettingsStore,
   ) {
     this.scenario$ = new BehaviorSubject<Scenario>({ status: "INIT" });
     this.highPrecisionAudioState$ = new BehaviorSubject<HighPrecisionAudioState>({
@@ -91,6 +94,16 @@ export class ScenarioManager {
     this.replayWatcher.newReplays$.subscribe((replayId) => {
       void this.loadReplay(replayId);
     });
+    this.hudSettingsStore.settings$
+      .pipe(
+        skip(1),
+        map((settings) => ({ ppEnabled: settings.ppEnabled, starsEnabled: settings.starsEnabled })),
+        distinctUntilChanged((a, b) => a.ppEnabled === b.ppEnabled && a.starsEnabled === b.starsEnabled),
+      )
+      .subscribe(() => {
+        const replay = this.replayManager.getMainReplay();
+        if (replay) this.refreshLivePerformance(replay);
+      });
   }
 
   // This is a temporary solution to

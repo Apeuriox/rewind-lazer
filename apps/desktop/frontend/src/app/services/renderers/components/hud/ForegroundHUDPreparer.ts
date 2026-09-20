@@ -15,6 +15,7 @@ import { BeatmapManager } from "../../../manager/BeatmapManager";
 import { mean, standardDeviation } from "simple-statistics";
 import { HitErrorBarSettingsStore } from "../../../common/hit-error-bar";
 import { SkinHolder } from "../../../common/skin";
+import { HudSettingsStore } from "../../../common/hud";
 
 const LAZER_REPLAY_LABEL_VISIBLE_MS = 5_000;
 const LAZER_REPLAY_LABEL_FADE_MS = 500;
@@ -38,7 +39,6 @@ export class ForegroundHUDPreparer {
   difficultyLines: Text[];
   starLine: Text;
   replayTypeLabel: Text;
-  ppLabel: Text;
   hitErrorBar: OsuClassicHitErrorBar;
 
   hitMinIndex = 0;
@@ -54,6 +54,7 @@ export class ForegroundHUDPreparer {
     private readonly gameSimulator: GameSimulator,
     private readonly gameplayClock: GameplayClock,
     private readonly hitErrorBarSettingsStore: HitErrorBarSettingsStore,
+    private readonly hudSettingsStore: HudSettingsStore,
   ) {
     this.container = new Container();
     this.stats = new Text("", { fontSize: 16, fill: HUD_TEXT_COLOR, fontFamily: "Arial", align: "left" });
@@ -71,16 +72,6 @@ export class ForegroundHUDPreparer {
       strokeThickness: 2,
     });
     this.replayTypeLabel.anchor.set(1, 0);
-    this.ppLabel = new Text("", {
-      fontSize: 16,
-      fontWeight: "600",
-      fill: HUD_TEXT_COLOR,
-      fontFamily: "Arial",
-      align: "right",
-      stroke: 0x000000,
-      strokeThickness: 2,
-    });
-    this.ppLabel.anchor.set(1, 0);
     this.starLine = new Text("", new TextStyle({ fontSize: 16, fontFamily: "Arial", align: "left", fill: HUD_TEXT_COLOR }));
     this.hitErrorBar = new OsuClassicHitErrorBar();
   }
@@ -195,9 +186,18 @@ export class ForegroundHUDPreparer {
       }
     }
 
-    this.ppLabel.text = `${Math.round(this.gameSimulator.getCurrentPp())}pp`;
-    this.ppLabel.position.set(STAGE_WIDTH - 15, y);
-    this.container.addChild(this.ppLabel);
+    if (!this.hudSettingsStore.settings.ppEnabled) return;
+
+    const skin = this.skinManager.getSkin();
+    const ppNumber = new OsuClassicNumber();
+    ppNumber.prepare({
+      digits: calculateDigits(Math.max(0, Math.round(this.gameSimulator.getCurrentPp()))),
+      textures: skin.getScoreTextures(),
+      overlap: skin.config.fonts.scoreOverlap,
+    });
+    ppNumber.anchorX = 1;
+    ppNumber.position.set(STAGE_WIDTH - 15, y);
+    this.container.addChild(ppNumber);
   }
 
   private updateStats() {
@@ -247,7 +247,8 @@ Mean: ${localMean.toFixed(digits)}ms
   }
 
   private updateDifficultyStats(x: number, y: number) {
-    const lines = difficultyHudLines(this.beatmapManager.getBeatmap());
+    const { difficultyStatsEnabled, starsEnabled } = this.hudSettingsStore.settings;
+    const lines = difficultyStatsEnabled ? difficultyHudLines(this.beatmapManager.getBeatmap()) : [];
     const starIndex = 4;
     const drawLine = (line: { text: string; change: string }, index: number, slot: number) => {
       const text = this.difficultyLines[index];
@@ -265,8 +266,8 @@ Mean: ${localMean.toFixed(digits)}ms
     lines.slice(0, starIndex).forEach((line, index) => drawLine(line, index, index));
 
     const stars = this.gameSimulator.getStars();
-    let slot = starIndex;
-    if (stars !== null && Number.isFinite(stars)) {
+    let slot = Math.min(starIndex, lines.length);
+    if (starsEnabled && stars !== null && Number.isFinite(stars)) {
       this.starLine.text = `Star: ${formatDifficultyValue(stars)}`;
       this.starLine.position.set(x, y + slot * HUD_LINE_HEIGHT);
       this.container.addChild(this.starLine);

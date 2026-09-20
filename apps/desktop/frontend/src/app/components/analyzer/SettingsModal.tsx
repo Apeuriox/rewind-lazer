@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useObservable } from "rxjs-hooks";
 import { DEFAULT_HIT_ERROR_BAR_SETTINGS } from "../../services/common/hit-error-bar";
 import { DEFAULT_PLAY_BAR_SETTINGS } from "../../services/common/playbar";
+import { DEFAULT_HUD_SETTINGS } from "../../services/common/hud";
 import { DEFAULT_OSU_SKIN_ID, DEFAULT_REWIND_SKIN_ID, SkinId, SkinSource, stringToSkinId } from "../../model/SkinId";
 import { DEFAULT_BEATMAP_RENDER_SETTINGS } from "../../services/common/beatmap-render";
 import { DEFAULT_SKIN_SETTINGS } from "../../services/common/skin";
@@ -179,6 +180,50 @@ function HitErrorBarSettingsSection() {
   );
 }
 
+function HudSettingsSection() {
+  const { hudSettingsStore } = useCommonManagers();
+  const settings = useObservable(() => hudSettingsStore.settings$, DEFAULT_HUD_SETTINGS);
+
+  return (
+    <Paper elevation={1} sx={{ boxShadow: "none", p: 2 }}>
+      <Stack gap={1}>
+        <Typography variant={"h6"}>HUD</Typography>
+        <FormGroup>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={settings.ppEnabled}
+                onChange={(event) => hudSettingsStore.changeSettings((s) => (s.ppEnabled = event.target.checked))}
+              />
+            }
+            label={"Show PP"}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={settings.starsEnabled}
+                onChange={(event) => hudSettingsStore.changeSettings((s) => (s.starsEnabled = event.target.checked))}
+              />
+            }
+            label={"Show star rating"}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={settings.difficultyStatsEnabled}
+                onChange={(event) =>
+                  hudSettingsStore.changeSettings((s) => (s.difficultyStatsEnabled = event.target.checked))
+                }
+              />
+            }
+            label={"Show AR, OD, CS, HP, and mods"}
+          />
+        </FormGroup>
+      </Stack>
+    </Paper>
+  );
+}
+
 function PlaybarSettingsSection() {
   const { playbarSettingsStore } = useCommonManagers();
   const settings = useObservable(() => playbarSettingsStore.settings$, DEFAULT_PLAY_BAR_SETTINGS);
@@ -297,6 +342,7 @@ function GameplaySettings() {
       <ReplayCursorSettingsSection />
       <AnalysisCursorSettingsSection />
       <HitErrorBarSettingsSection />
+      <HudSettingsSection />
       <BeatmapBackgroundSettings />
       <PlaybarSettingsSection />
       <BeatmapRenderSettings />

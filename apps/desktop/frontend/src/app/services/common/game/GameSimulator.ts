@@ -21,6 +21,7 @@ import { ipcRenderer } from "electron";
 import { bucketAndNormalizeStrains } from "../../../utils/strain-graph";
 import type { CalculateOsuStrainsOptions } from "../../../utils/rosu-pp";
 import { buildOsuScoreSnapshots, countPassedOsuObjects } from "../../../utils/osu-score-snapshots";
+import { HudSettingsStore } from "../hud";
 
 @injectable()
 export class GameSimulator {
@@ -44,7 +45,7 @@ export class GameSimulator {
   private ppByObject: number[] = [];
   private lastPassedOsuObjects = -1;
 
-  constructor() {
+  constructor(private readonly hudSettingsStore: HudSettingsStore) {
     this.replayEvents$ = new BehaviorSubject<ReplayAnalysisEvent[]>([]);
     this.difficulties$ = new BehaviorSubject<number[]>([]);
     this.replayClient$ = new BehaviorSubject<ReplayClient | null>(null);
@@ -125,13 +126,23 @@ export class GameSimulator {
   }
 
   async calculateLivePerformance(rawBeatmap: string, options: CalculateOsuStrainsOptions) {
+    const { ppEnabled, starsEnabled } = this.hudSettingsStore.settings;
+    if (!ppEnabled && !starsEnabled) {
+      this.performanceCalcId += 1;
+      this.stars$.next(null);
+      this.ppByObject = [];
+      this.lastPassedOsuObjects = -1;
+      this.currentPp$.next(0);
+      return;
+    }
+
     const calcId = ++this.performanceCalcId;
     const state = this.lastState;
     const beatmap = this.beatmap;
     const client = this.getReplayClient();
     if (!state || !beatmap || !client) return;
     try {
-      const snapshots = buildOsuScoreSnapshots(beatmap, state, client);
+      const snapshots = ppEnabled ? buildOsuScoreSnapshots(beatmap, state, client) : [];
       const result = (await ipcRenderer.invoke("calculateOsuPerformanceSeries", rawBeatmap, options, snapshots)) as {
         stars?: number;
         pp?: number[];
